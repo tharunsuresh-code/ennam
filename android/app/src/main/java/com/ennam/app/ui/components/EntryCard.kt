@@ -328,7 +328,7 @@ private fun ReceiptCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
 
 // ────────── JOURNAL ──────────
 
-private val moodRegex = Regex("""[:;][)D(]|[😀😁😂🤣😃😄😅😆😉😊😋😎😍😘🥰😗😙😚🙂🤗🤩🤔🤨😐😑😶😏😒🙄😬🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵🤯🤠🥳🥸😎🤓🧐😕😟🙁😮😯😲😳🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤗🤔🤭🤫🤥😶😐😑😬🙄😯😧😮😲😵🤐😷🤒🤕🤢🤮🤧🥴""")
+private val moodRegex = Regex("""[:;][)D(]|😀|😁|😂|😊|😍|😢|😭|😡|🤔|😎|🥰|🤩|😤|😠|🤬|😱|😰|😥|😴|🤯|🥳|🙂|😐|😏|😒|😳|🥺|🤗|😌|😔|😪|🤤|😷|🤒|🤕|🤢|🤮|🤧|🥶|🥵|🥴|😵|🤠|🤓|🧐|😕|😟|🙁|😮|😯|😲|😶|😑|😬|😥|😓|🤭|🤫|🤥|😗|😙|😚|😘|😋|😉|😅|😆|😃|😄|😣|😖|😫|😩|😨|😧|😦|😮‍💨|😵‍💫|🥸""")
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
