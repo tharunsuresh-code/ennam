@@ -1,6 +1,6 @@
 # Ennam (எண்ணம்) — On-Device SLM Thought Dump
 
-Repo: https://github.com/tharun/ennam
+Repo: https://github.com/tharunsuresh-code/ennam
 License: Apache 2.0
 Test device: Pixel 7 (Tensor G2)
 
