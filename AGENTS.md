@@ -26,6 +26,7 @@ Test device: Pixel 7 (Tensor G2)
     - FeedScreen: PullToRefreshBox, bottom sheet archive/delete
     - FeedViewModel: archiveEntry, toggleDone, togglePin, answerQuestion, toggleLocked
     - AppDatabase v2 (fallbackToDestructiveMigration)
+    - **Fix**: mood emoji regex used `[...]` character class with supplementary Unicode — Android ICU can't handle surrogate pairs in char classes. Changed to `|` alternation.
 - **Phase 3**
 - Phase 4 — Cross-platform (Flutter + iOS)
 
