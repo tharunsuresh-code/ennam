@@ -12,8 +12,21 @@ Test device: Pixel 7 (Tensor G2)
   - Room database (SQLite) for entries
   - Feed screen with chronological list + category tabs
   - SLM classification runs in background, pending cards shown during inference
-- Phase 2 — Per-type cards + search + embeddings
-- Phase 3 — Explore view (clusters, graph)
+- **Phase 2** — Per-type cards + search + embeddings
+  - ✅ Week 1: Per-Type Adaptive Cards (26 May 2026)
+    - Entry.kt: added isDone, isPinned, isLocked, answer fields
+    - EntryCard.kt: complete rewrite with 7 distinct card layouts
+    - Todo: checkbox + priority badge 🟢🟡🔴 → tap to archive
+    - Idea: expandable notes + tags
+    - Receipt: auto-extracted amount + store name, long-press to archive
+    - Journal: first 3 lines + mood emoji, long-press to lock
+    - Bookmark: URL extraction → tap opens in browser
+    - Question: inline answer field → pressed Done marks resolved
+    - Screenshot: pin to top via tap
+    - FeedScreen: PullToRefreshBox, bottom sheet archive/delete
+    - FeedViewModel: archiveEntry, toggleDone, togglePin, answerQuestion, toggleLocked
+    - AppDatabase v2 (fallbackToDestructiveMigration)
+- **Phase 3**
 - Phase 4 — Cross-platform (Flutter + iOS)
 
 ## Architecture
@@ -106,6 +119,15 @@ cd android
 ```
 
 APK: `android/app/build/outputs/apk/debug/app-debug.apk` (~46MB)
+
+### Phase 1 build fixes (new code)
+
+Applied when pulling the Phase 1 code (Room DB + Feed + InputSheet):
+
+1. **Room 2.6.1 → 2.7.0** — Kotlin 2.1.0 produces metadata v2.1.0; Room 2.6.1's bundled kotlinx-metadata-jvm only supports v2.0.0. Upgraded to Room 2.7.0 which handles v2.1.0 metadata.
+2. **FTS5 MATCH → LIKE search in EntryDao** — The `search()` query used `WHERE entries MATCH :query` which requires an FTS5 virtual table that doesn't exist. Replaced with `LIKE '%' || :query || '%'` across rawText, summary, and category columns.
+3. **Added `flatMapLatest` import** in FeedViewModel.kt.
+4. **Added `material-icons-extended` dependency** — InputSheet uses `Icons.Default.Mic` and `Icons.Default.PhotoCamera` which live in the extended icons library (not in material-icons-core).
 
 ### ADB & Pixel 7
 

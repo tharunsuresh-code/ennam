@@ -2,7 +2,6 @@ package com.ennam.app.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import androidx.room.TypeConverter
 
 @Entity(tableName = "entries")
 data class Entry(
@@ -15,7 +14,12 @@ data class Entry(
     val tags: String,                      // JSON array of tags
     val actionable: Boolean = false,
     val priority: String = "medium",       // "low" | "medium" | "high"
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    // Phase 2 — per-type interaction fields
+    val isDone: Boolean = false,           // todo: checkbox state
+    val isPinned: Boolean = false,          // screenshot: pin to top
+    val isLocked: Boolean = false,          // journal: biometric lock
+    val answer: String = ""                // question: inline answer
 )
 
 /**

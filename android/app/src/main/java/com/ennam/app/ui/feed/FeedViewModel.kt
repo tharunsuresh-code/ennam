@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -120,8 +121,65 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ────────── Phase 2 — Card interactions ──────────
+
+    fun archiveEntry(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.archive(id)
+        }
+    }
+
+    fun deleteEntry(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.delete(id)
+        }
+    }
+
+    fun toggleDone(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.toggleDone(id)
+        }
+    }
+
+    fun togglePinned(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.togglePinned(id)
+        }
+    }
+
+    fun toggleLocked(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.toggleLocked(id)
+        }
+    }
+
+    fun answerQuestion(id: String, answer: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.setAnswer(id, answer)
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         engine.unload()
+    }
+
+    // ────────── "On this day" helpers ──────────
+
+    companion object {
+        /** Get ms for start of day N days ago */
+        fun startOfDayAgo(daysAgo: Long): Long {
+            val cal = java.util.Calendar.getInstance()
+            cal.add(java.util.Calendar.DAY_OF_YEAR, -daysAgo.toInt())
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            cal.set(java.util.Calendar.MINUTE, 0)
+            cal.set(java.util.Calendar.SECOND, 0)
+            cal.set(java.util.Calendar.MILLISECOND, 0)
+            return cal.timeInMillis
+        }
+
+        fun endOfDayAgo(daysAgo: Long): Long {
+            return startOfDayAgo(daysAgo) + 86_400_000
+        }
     }
 }

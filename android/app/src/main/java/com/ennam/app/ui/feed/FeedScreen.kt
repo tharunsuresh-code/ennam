@@ -6,15 +6,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ennam.app.ui.components.CardCallbacks
 import com.ennam.app.ui.components.CategoryTabs
 import com.ennam.app.ui.components.EntryCard
 import com.ennam.app.ui.components.PendingEntryCard
 import com.ennam.app.ui.input.InputResult
 import com.ennam.app.ui.input.InputSheet
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,8 +28,41 @@ fun FeedScreen(
     val entries by viewModel.entries.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val pendingEntries by viewModel.pendingEntries.collectAsState()
+    val scope = rememberCoroutineScope()
 
     var showInputSheet by remember { mutableStateOf(false) }
+
+    // Bottom sheet state for card actions
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var selectedEntryId by remember { mutableStateOf<String?>(null) }
+    var showActionSheet by remember { mutableStateOf(false) }
+
+    // Pull-to-refresh state
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    val callbacks = CardCallbacks(
+        onArchive = { id ->
+            viewModel.archiveEntry(id)
+        },
+        onDelete = { id ->
+            viewModel.deleteEntry(id)
+        },
+        onToggleDone = { id ->
+            viewModel.toggleDone(id)
+            // Auto-archive when toggled done
+            viewModel.archiveEntry(id)
+        },
+        onTogglePin = { id ->
+            viewModel.togglePinned(id)
+        },
+        onAnswer = { id, answer ->
+            viewModel.answerQuestion(id, answer)
+        },
+        onToggleLocked = { id ->
+            viewModel.toggleLocked(id)
+        },
+        onOpenUrl = { _ -> }
+    )
 
     Scaffold(
         topBar = {
@@ -55,7 +91,7 @@ fun FeedScreen(
             when (modelState) {
                 ModelState.Downloading -> DownloadScreen(
                     progress = 0f,
-                    onProgress = {} // handled in VM
+                    onProgress = {}
                 )
                 ModelState.Loading -> LoadingScreen()
                 ModelState.Error -> ErrorScreen()
@@ -70,18 +106,35 @@ fun FeedScreen(
                     if (entries.isEmpty() && pendingEntries.isEmpty()) {
                         EmptyState()
                     } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(vertical = 4.dp)
+                        PullToRefreshBox(
+                            isRefreshing = isRefreshing,
+                            onRefresh = {
+                                // Trigger refresh by re-querying
+                                scope.launch {
+                                    isRefreshing = true
+                                    // Small delay to show the spinner
+                                    kotlinx.coroutines.delay(300)
+                                    isRefreshing = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            // Pending entries first (shimmer)
-                            items(pendingEntries, key = { it.id }) { pending ->
-                                PendingEntryCard(pending)
-                            }
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                // Pending entries first (shimmer)
+                                items(pendingEntries, key = { it.id }) { pending ->
+                                    PendingEntryCard(pending)
+                                }
 
-                            // Completed entries
-                            items(entries, key = { it.id }) { entry ->
-                                EntryCard(entry)
+                                // Completed entries
+                                items(entries, key = { it.id }) { entry ->
+                                    EntryCard(
+                                        entry = entry,
+                                        callbacks = callbacks
+                                    )
+                                }
                             }
                         }
                     }
@@ -99,6 +152,59 @@ fun FeedScreen(
                 viewModel.onInput(result)
             }
         )
+    }
+
+    // Card action bottom sheet
+    if (showActionSheet && selectedEntryId != null) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                showActionSheet = false
+                selectedEntryId = null
+            },
+            sheetState = sheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                Text(
+                    "Actions",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Spacer(Modifier.height(16.dp))
+
+                FilledTonalButton(
+                    onClick = {
+                        selectedEntryId?.let { viewModel.archiveEntry(it) }
+                        showActionSheet = false
+                        selectedEntryId = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("📦 Archive")
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                FilledTonalButton(
+                    onClick = {
+                        selectedEntryId?.let { viewModel.deleteEntry(it) }
+                        showActionSheet = false
+                        selectedEntryId = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) {
+                    Text("🗑️ Delete")
+                }
+
+                Spacer(Modifier.height(24.dp))
+            }
+        }
     }
 }
 
