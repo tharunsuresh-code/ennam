@@ -6,8 +6,12 @@ Test device: Pixel 7 (Tensor G2)
 
 ## Phases
 
-- **Phase 0 (current)** — llama.cpp Android prototype. Prove Gemma 2B runs on Pixel 7 with <6s latency.
-- Phase 1 — Core dump → categorize → feed loop
+- **Phase 0 ✅** — llama.cpp Android prototype. Qwen2.5-1.5B runs on Pixel 7 at 5-6s.
+- **Phase 1 ✅ (current)** — Core dump → categorize → feed loop.
+  - Text, voice, image input via bottom sheet
+  - Room database (SQLite) for entries
+  - Feed screen with chronological list + category tabs
+  - SLM classification runs in background, pending cards shown during inference
 - Phase 2 — Per-type cards + search + embeddings
 - Phase 3 — Explore view (clusters, graph)
 - Phase 4 — Cross-platform (Flutter + iOS)
