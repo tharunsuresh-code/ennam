@@ -3,8 +3,8 @@
 set -e
 
 MODEL_DIR="$(cd "$(dirname "$0")" && pwd)"
-MODEL_FILE="$MODEL_DIR/gemma-2b-it-q4_k_m.gguf"
-MODEL_URL="https://huggingface.co/google/gemma-2b-it-GGUF/resolve/main/gemma-2b-it-q4_k_m.gguf"
+MODEL_FILE="$MODEL_DIR/gemma-2-2b-it-Q4_K_M.gguf"
+MODEL_URL="https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
 
 if [ -f "$MODEL_FILE" ]; then
     echo "✓ Model already exists: $MODEL_FILE ($(du -h "$MODEL_FILE" | cut -f1))"

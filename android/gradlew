@@ -1,2 +1,19 @@
 #!/bin/sh
-exec /usr/lib/jvm/java-17-openjdk-amd64/bin/java -Dorg.gradle.appname=gradlew -classpath "$0/gradle/wrapper/gradle-wrapper.jar" org.gradle.wrapper.GradleWrapperMain "$@"
+
+# Resolve symlinks and get the directory containing this script
+PRG="$0"
+while [ -h "$PRG" ]; do
+    ls=$(ls -ld "$PRG")
+    link=$(expr "$ls" : '.*-> \(.*\)$')
+    if expr "$link" : '/.*' > /dev/null; then
+        PRG="$link"
+    else
+        PRG=$(dirname "$PRG")/"$link"
+    fi
+done
+DIR=$(cd "$(dirname "$PRG")" > /dev/null && pwd)
+
+exec /usr/lib/jvm/java-17-openjdk-amd64/bin/java \
+    -Dorg.gradle.appname=gradlew \
+    -classpath "$DIR/gradle/wrapper/gradle-wrapper.jar" \
+    org.gradle.wrapper.GradleWrapperMain "$@"
