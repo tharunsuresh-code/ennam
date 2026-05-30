@@ -1,6 +1,8 @@
 #include <jni.h>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <chrono>
 #include <android/log.h>
 #include "llama.h"
 #include "ggml-cpu.h"
@@ -31,6 +33,8 @@ static std::string token_to_text(const struct llama_vocab *vocab, llama_token to
 JNIEXPORT jboolean JNICALL
 Java_com_ennam_app_ml_LlamaEngine_nativeLoadModel(JNIEnv *env, jobject /*thiz*/,
                                                       jstring model_path) {
+    auto t0 = std::chrono::steady_clock::now();
+
     const char *path = env->GetStringUTFChars(model_path, nullptr);
     std::string model_path_str(path);
     env->ReleaseStringUTFChars(model_path, path);
@@ -60,11 +64,12 @@ Java_com_ennam_app_ml_LlamaEngine_nativeLoadModel(JNIEnv *env, jobject /*thiz*/,
         return JNI_FALSE;
     }
 
-    // Create context
+    // Create context — keep it simple for speed
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = 2048;
     ctx_params.n_threads = 6;
     ctx_params.n_threads_batch = 6;
+    ctx_params.flash_attn = false;
 
     g_ctx = llama_init_from_model(g_model, ctx_params);
     if (!g_ctx) {
@@ -74,13 +79,17 @@ Java_com_ennam_app_ml_LlamaEngine_nativeLoadModel(JNIEnv *env, jobject /*thiz*/,
         return JNI_FALSE;
     }
 
-    LOGI("Model loaded: %s", model_path_str.c_str());
+    auto t1 = std::chrono::steady_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    LOGI("Model loaded in %lldms", (long long)ms);
     return JNI_TRUE;
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_ennam_app_ml_LlamaEngine_nativeInference(JNIEnv *env, jobject /*thiz*/,
                                                       jstring prompt) {
+    auto t_start = std::chrono::steady_clock::now();
+
     if (!g_model || !g_ctx) {
         return env->NewStringUTF("{\"error\": \"Model not loaded\"}");
     }
@@ -89,20 +98,18 @@ Java_com_ennam_app_ml_LlamaEngine_nativeInference(JNIEnv *env, jobject /*thiz*/,
     std::string prompt_str(prompt_cstr);
     env->ReleaseStringUTFChars(prompt, prompt_cstr);
 
-    // Build full prompt with Gemma chat template
-    std::string full_prompt = "<start_of_turn>user\n" + prompt_str + "<end_of_turn>\n<start_of_turn>model\n";
-
+    // Prompt already formatted by Classifier.kt (ChatML), do not add wrapper
     const struct llama_vocab *vocab = llama_model_get_vocab(g_model);
     if (!vocab) {
         LOGE("Failed to get vocab");
         return env->NewStringUTF("{\"error\": \"Vocab not found\"}");
     }
 
-    // Tokenize prompt — first call with null/0 returns -(required size) if buffer too small
-    int32_t n_tokens = llama_tokenize(vocab, full_prompt.c_str(), (int32_t)full_prompt.length(),
-                                      nullptr, 0, true, false);
+    // Tokenize with parse_special=true so <|im_start|>, <|im_end|> are treated as special tokens
+    // add_special=true adds BOS token (required for Qwen2.5)
+    int32_t n_tokens = llama_tokenize(vocab, prompt_str.c_str(), (int32_t)prompt_str.length(),
+                                      nullptr, 0, true, true);
     if (n_tokens <= 0) {
-        // Negative value means "buffer too small, here's the negated size needed"
         n_tokens = -n_tokens;
     }
     if (n_tokens <= 0) {
@@ -110,8 +117,8 @@ Java_com_ennam_app_ml_LlamaEngine_nativeInference(JNIEnv *env, jobject /*thiz*/,
         return env->NewStringUTF("{\"error\": \"Tokenization failed\"}");
     }
     std::vector<llama_token> tokens(n_tokens);
-    llama_tokenize(vocab, full_prompt.c_str(), (int32_t)full_prompt.length(),
-                   tokens.data(), (int32_t)tokens.size(), true, false);
+    llama_tokenize(vocab, prompt_str.c_str(), (int32_t)prompt_str.length(),
+                   tokens.data(), (int32_t)tokens.size(), true, true);
 
     // Clear KV cache
     llama_kv_cache_clear(g_ctx);
@@ -121,6 +128,7 @@ Java_com_ennam_app_ml_LlamaEngine_nativeInference(JNIEnv *env, jobject /*thiz*/,
         LOGE("Failed to evaluate prompt");
         return env->NewStringUTF("{\"error\": \"Inference failed\"}");
     }
+    auto t_prompt = std::chrono::steady_clock::now();
 
     // Generate tokens (max 256)
     std::string result;
@@ -128,33 +136,28 @@ Java_com_ennam_app_ml_LlamaEngine_nativeInference(JNIEnv *env, jobject /*thiz*/,
     const int32_t max_tokens = 256;
     int32_t n_vocab = llama_vocab_n_tokens(vocab);
 
+    // Pre-allocate result buffer to avoid repeated reallocation
+    result.reserve(1024);
+
     while (n_generated < max_tokens) {
-        // Get logits for the last token
         float *logits = llama_get_logits_ith(g_ctx, -1);
         if (!logits) {
             LOGE("Failed to get logits");
             break;
         }
 
-        // Greedy sampling
-        llama_token new_token_id = 0;
-        float max_logit = logits[0];
-        for (int32_t i = 1; i < n_vocab; i++) {
-            if (logits[i] > max_logit) {
-                max_logit = logits[i];
-                new_token_id = i;
-            }
-        }
+        // Greedy sampling via max_element
+        llama_token new_token_id = (llama_token)std::distance(
+            logits, std::max_element(logits, logits + n_vocab));
 
-        // End-of-sentence
-        if (new_token_id == llama_vocab_eos(vocab)) {
+        // Stop on EOS or EOT (end-of-turn) token
+        if (new_token_id == llama_vocab_eos(vocab) ||
+            new_token_id == llama_vocab_eot(vocab)) {
             break;
         }
 
-        // Convert to text and append
         result += token_to_text(vocab, new_token_id);
 
-        // Feed this token back in for the next iteration
         llama_token single = new_token_id;
         if (llama_decode(g_ctx, llama_batch_get_one(&single, 1))) {
             break;
@@ -163,10 +166,15 @@ Java_com_ennam_app_ml_LlamaEngine_nativeInference(JNIEnv *env, jobject /*thiz*/,
         n_generated++;
     }
 
-    // Clean up
-    llama_kv_cache_clear(g_ctx);
+    auto t_end = std::chrono::steady_clock::now();
+    auto ms_prompt = std::chrono::duration_cast<std::chrono::milliseconds>(t_prompt - t_start).count();
+    auto ms_total = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+    int ms_per_token = n_generated > 0 ? (ms_total - ms_prompt) / n_generated : 0;
 
-    LOGI("Generated %d tokens", n_generated);
+    LOGI("Inference: %lldms (%lldms prompt, %d tokens @ %dms/tok)",
+         (long long)ms_total, (long long)ms_prompt, n_generated, ms_per_token);
+
+    llama_kv_cache_clear(g_ctx);
     return env->NewStringUTF(result.c_str());
 }
 
