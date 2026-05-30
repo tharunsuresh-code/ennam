@@ -24,14 +24,14 @@ Test device: Pixel 7 (Tensor G2)
 
 ### Model note
 
-The original project targeted `google/gemma-2b-it-GGUF` (gated repo). Switched to
-`bartowski/gemma-2-2b-it-GGUF` (freely available) — Gemma 2 2B with same prompt template.
-Model file: `gemma-2-2b-it-Q4_K_M.gguf`
+Switching to Qwen2.5-1.5B-Instruct for faster inference on Pixel 7.
+Gemma 2 2B tested at 15-20s — too slow for CPU-only on Tensor G2.
+Qwen2.5-1.5B (~1GB, 1.5B params) expected ~6-10s on Pixel 7.
 
 ```bash
 # Pre-download on desktop:
-curl -L -o models/gemma-2-2b-it-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
+curl -L -o models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf \
+  "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
 ```
 
 ## Setup (Hermes Agent bootstrap — May 29 2026)

@@ -67,8 +67,9 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
     set(LLAMA_ARM64 ON CACHE BOOL "" FORCE)
     add_compile_definitions(GGML_USE_LLAMAFILE)
     add_compile_definitions(__ARM_ARCH_8A)
-    # NEON - use portable flags, -mcpu=cortex-x1 can cause issues on Tensor G2
-    add_compile_options(-O3 -DNDEBUG)
+    # Pixel 7: Cortex-X1 + Cortex-A78, both support ARMv8.2-a + dotprod
+    # -mtune is safe (doesn't restrict codegen), -mcpu can break on Tensor
+    add_compile_options(-O3 -DNDEBUG -march=armv8.2-a+fp16+dotprod -mtune=cortex-x1)
 endif()
 
 # JNI bridge

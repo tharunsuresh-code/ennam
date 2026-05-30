@@ -12,22 +12,24 @@ data class ClassificationResult(
 
 /**
  * Wraps SLM inference with the categorization prompt template.
- * Runs the Gemma 2B model to classify and summarize free-form input.
+ * Uses Qwen2.5 ChatML format.
  */
 class Classifier(private val engine: LlamaEngine) {
 
-    private val systemPrompt = """
-You are a categorization engine. Given user input, identify the type and condense to 1-2 lines.
-
-Rules:
-- category must be exactly one of: idea, todo, receipt, journal, bookmark, question, screenshot
-- summary must be 1-2 line condensation
-- tags must be 2-5 relevant keywords
-- actionable must be true if the input describes something to do
-- priority must be low, medium, or high
-
-Respond ONLY with valid JSON. No other text.
-""".trimIndent()
+    /**
+     * Build the full ChatML prompt.
+     * Qwen2.5 uses: <|im_start|>system...<|im_end|> <|im_start|>user...<|im_end|> <|im_start|>assistant
+     */
+    private fun buildPrompt(input: ClassifyInput): String {
+        return buildString {
+            append("<|im_start|>system\n")
+            append("Categorize into: idea/todo/receipt/journal/bookmark/question/screenshot. ")
+            append("Return JSON: {\"category\":\"\",\"summary\":\"1-2 line\",\"tags\":[],\"actionable\":false,\"priority\":\"low/med/high\"}\n")
+            append("<|im_end|>\n<|im_start|>user\n")
+            append("${input.rawText}\n")
+            append("<|im_end|>\n<|im_start|>assistant\n")
+        }
+    }
 
     data class ClassifyInput(
         val rawText: String,
@@ -39,15 +41,6 @@ Respond ONLY with valid JSON. No other text.
         val prompt = buildPrompt(input)
         val rawOutput = engine.infer(prompt)
         return parseOutput(rawOutput)
-    }
-
-    private fun buildPrompt(input: ClassifyInput): String {
-        return """
-$systemPrompt
-
-Input (${input.sourceType}): ${input.rawText}
-Output:
-""".trimIndent()
     }
 
     private fun parseOutput(raw: String): ClassificationResult {

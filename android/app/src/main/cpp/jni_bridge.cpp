@@ -63,8 +63,8 @@ Java_com_ennam_app_ml_LlamaEngine_nativeLoadModel(JNIEnv *env, jobject /*thiz*/,
     // Create context
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = 2048;
-    ctx_params.n_threads = 4;
-    ctx_params.n_threads_batch = 4;
+    ctx_params.n_threads = 6;
+    ctx_params.n_threads_batch = 6;
 
     g_ctx = llama_init_from_model(g_model, ctx_params);
     if (!g_ctx) {

@@ -12,10 +12,10 @@ class LlamaEngine(context: Context) {
 
     companion object {
         private const val TAG = "LlamaEngine"
-        private const val MODEL_FILENAME = "gemma-2-2b-it-Q4_K_M.gguf"
+        private const val MODEL_FILENAME = "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
         private const val MODEL_URL =
-            "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
-        private const val MODEL_SIZE_MB = 1630L // ~1.7 GB
+            "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
+        private const val MODEL_SIZE_MB = 984L // ~1 GB
 
         init {
             System.loadLibrary("ennam_jni")
