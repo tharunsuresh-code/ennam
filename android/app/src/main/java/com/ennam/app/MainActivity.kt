@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ennam.app.ui.feed.FeedScreen
 import com.ennam.app.ui.feed.FeedViewModel
 import com.ennam.app.ui.feed.ModelState
+import com.ennam.app.ui.search.SearchViewModel
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -18,22 +19,23 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                val viewModel: FeedViewModel = viewModel()
+                val feedViewModel: FeedViewModel = viewModel()
+                val searchViewModel: SearchViewModel = viewModel()
                 val scope = rememberCoroutineScope()
                 var modelState by remember { mutableStateOf(ModelState.Downloading) }
                 var downloadProgress by remember { mutableFloatStateOf(0f) }
 
-                // Startup: download → load → ready
+                // Startup: download SLM model → load → ready
                 LaunchedEffect(Unit) {
-                    if (!viewModel.isModelDownloaded()) {
+                    if (!feedViewModel.isModelDownloaded()) {
                         modelState = ModelState.Downloading
-                        viewModel.downloadModel(
+                        feedViewModel.downloadModel(
                             progress = { downloadProgress = it },
                             onComplete = { ok ->
                                 if (ok) {
                                     modelState = ModelState.Loading
                                     scope.launch {
-                                        viewModel.loadModel { modelState = ModelState.Ready }
+                                        feedViewModel.loadModel { modelState = ModelState.Ready }
                                     }
                                 } else {
                                     modelState = ModelState.Error
@@ -43,13 +45,34 @@ class MainActivity : ComponentActivity() {
                     } else {
                         modelState = ModelState.Loading
                         scope.launch {
-                            viewModel.loadModel { modelState = ModelState.Ready }
+                            feedViewModel.loadModel { modelState = ModelState.Ready }
                         }
+                    }
+
+                    // Start embedding model download in background
+                    if (!feedViewModel.isEmbeddingModelDownloaded()) {
+                        feedViewModel.downloadEmbeddingModel(
+                            progress = {},
+                            onComplete = { if (it) feedViewModel.loadEmbeddingModel() }
+                        )
+                    } else {
+                        feedViewModel.loadEmbeddingModel()
+                    }
+
+                    // Also load embedding model for search
+                    if (!searchViewModel.isModelDownloaded()) {
+                        searchViewModel.downloadModel(
+                            progress = {},
+                            onComplete = { if (it) searchViewModel.loadModel() }
+                        )
+                    } else {
+                        searchViewModel.loadModel()
                     }
                 }
 
                 FeedScreen(
-                    viewModel = viewModel,
+                    viewModel = feedViewModel,
+                    searchViewModel = searchViewModel,
                     modelState = modelState
                 )
             }

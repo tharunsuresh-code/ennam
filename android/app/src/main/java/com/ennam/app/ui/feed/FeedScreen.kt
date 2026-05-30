@@ -5,62 +5,52 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ennam.app.ui.components.CardCallbacks
 import com.ennam.app.ui.components.CategoryTabs
 import com.ennam.app.ui.components.EntryCard
 import com.ennam.app.ui.components.PendingEntryCard
-import com.ennam.app.ui.input.InputResult
 import com.ennam.app.ui.input.InputSheet
-import kotlinx.coroutines.launch
+import com.ennam.app.ui.search.SearchBar
+import com.ennam.app.ui.search.SearchResults
+import com.ennam.app.ui.search.SearchViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel,
-    modelState: ModelState
+    searchViewModel: SearchViewModel,
+    modelState: ModelState,
+    onOpenSettings: () -> Unit = {}
 ) {
     val entries by viewModel.entries.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val pendingEntries by viewModel.pendingEntries.collectAsState()
-    val scope = rememberCoroutineScope()
+    val onThisDayEntries by viewModel.onThisDayEntries.collectAsState()
+
+    val searchQuery by searchViewModel.query.collectAsState()
+    val searchResults by searchViewModel.results.collectAsState()
+    val isSearchActive by searchViewModel.isActive.collectAsState()
+    val isSearching by searchViewModel.isSearching.collectAsState()
 
     var showInputSheet by remember { mutableStateOf(false) }
 
-    // Bottom sheet state for card actions
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var selectedEntryId by remember { mutableStateOf<String?>(null) }
-    var showActionSheet by remember { mutableStateOf(false) }
-
-    // Pull-to-refresh state
-    var isRefreshing by remember { mutableStateOf(false) }
-
     val callbacks = CardCallbacks(
-        onArchive = { id ->
-            viewModel.archiveEntry(id)
-        },
-        onDelete = { id ->
-            viewModel.deleteEntry(id)
-        },
+        onArchive = { viewModel.archiveEntry(it) },
+        onDelete = { viewModel.deleteEntry(it) },
         onToggleDone = { id ->
             viewModel.toggleDone(id)
-            // Auto-archive when toggled done
             viewModel.archiveEntry(id)
         },
-        onTogglePin = { id ->
-            viewModel.togglePinned(id)
-        },
-        onAnswer = { id, answer ->
-            viewModel.answerQuestion(id, answer)
-        },
-        onToggleLocked = { id ->
-            viewModel.toggleLocked(id)
-        },
+        onTogglePin = { viewModel.togglePinned(it) },
+        onAnswer = { id, answer -> viewModel.answerQuestion(id, answer) },
+        onToggleLocked = { viewModel.toggleLocked(it) },
         onOpenUrl = { _ -> }
     )
 
@@ -68,13 +58,18 @@ fun FeedScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Ennam") },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
         floatingActionButton = {
-            if (modelState == ModelState.Ready) {
+            if (modelState == ModelState.Ready && !isSearchActive) {
                 FloatingActionButton(
                     onClick = { showInputSheet = true }
                 ) {
@@ -89,51 +84,66 @@ fun FeedScreen(
                 .padding(padding)
         ) {
             when (modelState) {
-                ModelState.Downloading -> DownloadScreen(
-                    progress = 0f,
-                    onProgress = {}
-                )
+                ModelState.Downloading -> DownloadScreen(progress = 0f, onProgress = {})
                 ModelState.Loading -> LoadingScreen()
                 ModelState.Error -> ErrorScreen()
                 ModelState.Ready -> {
-                    CategoryTabs(
-                        selectedLabel = selectedCategory.ifBlank { "All" },
-                        onCategorySelected = { viewModel.setCategory(it) }
+                    SearchBar(
+                        query = searchQuery,
+                        onQueryChange = { searchViewModel.setQuery(it) },
+                        onClear = { searchViewModel.clearQuery() },
+                        isActive = isSearchActive,
+                        onActiveChange = { searchViewModel.setActive(it) }
                     )
 
-                    Spacer(Modifier.height(8.dp))
-
-                    if (entries.isEmpty() && pendingEntries.isEmpty()) {
-                        EmptyState()
-                    } else {
-                        PullToRefreshBox(
-                            isRefreshing = isRefreshing,
-                            onRefresh = {
-                                // Trigger refresh by re-querying
-                                scope.launch {
-                                    isRefreshing = true
-                                    // Small delay to show the spinner
-                                    kotlinx.coroutines.delay(300)
-                                    isRefreshing = false
-                                }
-                            },
+                    if (isSearchActive) {
+                        SearchResults(
+                            results = searchResults,
+                            query = searchQuery,
+                            isSearching = isSearching,
+                            callbacks = callbacks,
                             modifier = Modifier.fillMaxSize()
-                        ) {
+                        )
+                    } else {
+                        CategoryTabs(
+                            selectedLabel = selectedCategory.ifBlank { "All" },
+                            onCategorySelected = { viewModel.setCategory(it) }
+                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        if (entries.isEmpty() && pendingEntries.isEmpty() && onThisDayEntries.isEmpty()) {
+                            EmptyState()
+                        } else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(vertical = 4.dp)
                             ) {
-                                // Pending entries first (shimmer)
                                 items(pendingEntries, key = { it.id }) { pending ->
                                     PendingEntryCard(pending)
                                 }
 
-                                // Completed entries
+                                if (onThisDayEntries.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            "\uD83D\uDCC5 On this day",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    items(onThisDayEntries, key = { "otd-${it.id}" }) { entry ->
+                                        EntryCard(entry = entry, callbacks = callbacks)
+                                    }
+                                    item {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                }
+
                                 items(entries, key = { it.id }) { entry ->
-                                    EntryCard(
-                                        entry = entry,
-                                        callbacks = callbacks
-                                    )
+                                    EntryCard(entry = entry, callbacks = callbacks)
                                 }
                             }
                         }
@@ -153,59 +163,6 @@ fun FeedScreen(
             }
         )
     }
-
-    // Card action bottom sheet
-    if (showActionSheet && selectedEntryId != null) {
-        ModalBottomSheet(
-            onDismissRequest = {
-                showActionSheet = false
-                selectedEntryId = null
-            },
-            sheetState = sheetState
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
-            ) {
-                Text(
-                    "Actions",
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Spacer(Modifier.height(16.dp))
-
-                FilledTonalButton(
-                    onClick = {
-                        selectedEntryId?.let { viewModel.archiveEntry(it) }
-                        showActionSheet = false
-                        selectedEntryId = null
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("📦 Archive")
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                FilledTonalButton(
-                    onClick = {
-                        selectedEntryId?.let { viewModel.deleteEntry(it) }
-                        showActionSheet = false
-                        selectedEntryId = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                ) {
-                    Text("🗑️ Delete")
-                }
-
-                Spacer(Modifier.height(24.dp))
-            }
-        }
-    }
 }
 
 @Composable
@@ -221,9 +178,7 @@ private fun DownloadScreen(progress: Float, onProgress: (Float) -> Unit) {
         Spacer(Modifier.height(16.dp))
         Text("Qwen2.5-1.5B-Instruct (~1 GB)", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(24.dp))
-        LinearProgressIndicator(
-            modifier = Modifier.fillMaxWidth(),
-        )
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         Text("Keep phone on WiFi", style = MaterialTheme.typography.bodySmall)
     }
@@ -268,7 +223,7 @@ private fun EmptyState() {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("📥", style = MaterialTheme.typography.displayLarge)
+        Text("\uD83D\uDCE5", style = MaterialTheme.typography.displayLarge)
         Spacer(Modifier.height(16.dp))
         Text(
             "Tap + to dump your first thought",

@@ -14,6 +14,20 @@ Test device: Pixel 7 (Tensor G2)
   - SLM classification runs in background, pending cards shown during inference
 - **Phase 2** — Per-type cards + search + embeddings
   - ✅ Week 1: Per-Type Adaptive Cards (26 May 2026)
+  - ✅ Week 2: Search + Embeddings (30 May 2026)
+    - Entry model: added `embedding` field (ByteArray?, 384 float32)
+    - EntryFts: FTS4 virtual table with Room @Fts4 (rawText, summary, category, tags)
+    - AppDatabase v3: EntryFts entity + seed callback for default categories
+    - Embedder.kt: ONNX Runtime wrapper for all-MiniLM-L6-v2 (~90MB)
+      - BERT WordPiece tokenizer (vocab.txt from HuggingFace)
+      - Mean pooling + L2 normalization for 384-dim embeddings
+      - Download model + vocab on first launch
+    - SearchBar.kt: inline search composable at top of feed
+    - SearchViewModel: FTS4 keyword search + semantic cosine similarity merge
+    - FeedScreen: search bar above tabs, shows results in search mode
+    - "On this day": section header with entries from 30 days / 1 year ago
+    - FeedViewModel: queues embedding computation after entry creation
+    - build.gradle.kts: added onnxruntime-android:1.21.0 dependency
     - Entry.kt: added isDone, isPinned, isLocked, answer fields
     - EntryCard.kt: complete rewrite with 7 distinct card layouts
     - Todo: checkbox + priority badge 🟢🟡🔴 → tap to archive

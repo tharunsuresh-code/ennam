@@ -19,7 +19,9 @@ data class Entry(
     val isDone: Boolean = false,           // todo: checkbox state
     val isPinned: Boolean = false,          // screenshot: pin to top
     val isLocked: Boolean = false,          // journal: biometric lock
-    val answer: String = ""                // question: inline answer
+    val answer: String = "",                // question: inline answer
+    // Phase 2 Week 2 — search + embeddings
+    val embedding: ByteArray? = null        // 384 float32 = 1536 bytes, null until computed
 )
 
 /**

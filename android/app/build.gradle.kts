@@ -84,4 +84,7 @@ dependencies {
 
     // OkHttp (for model download)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // ONNX Runtime (semantic search embeddings)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.0")
 }

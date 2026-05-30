@@ -8,6 +8,7 @@ import com.ennam.app.data.model.Entry
 import com.ennam.app.data.model.PendingEntry
 import com.ennam.app.data.repository.EntryRepository
 import com.ennam.app.ml.Classifier
+import com.ennam.app.ml.Embedder
 import com.ennam.app.ml.LlamaEngine
 import com.ennam.app.ui.input.InputResult
 import kotlinx.coroutines.Dispatchers
@@ -15,17 +16,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Calendar
 import java.util.UUID
 
 class FeedViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getInstance(application)
-    private val repository = EntryRepository(db.entryDao())
+    val repository = EntryRepository(db.entryDao())
     private val engine = LlamaEngine(application)
     private val classifier = Classifier(engine)
+    val embedder = Embedder(application)
 
     private val _selectedCategory = MutableStateFlow("")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
@@ -35,6 +39,10 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _slmReady = MutableStateFlow(false)
 
+    // "On this day" entries
+    private val _onThisDayEntries = MutableStateFlow<List<Entry>>(emptyList())
+    val onThisDayEntries: StateFlow<List<Entry>> = _onThisDayEntries.asStateFlow()
+
     /** Feed entries for the selected category */
     val entries: StateFlow<List<Entry>> = _selectedCategory.flatMapLatest { category ->
         if (category.isBlank()) {
@@ -43,6 +51,40 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
             repository.getByCategory(category)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    init {
+        loadOnThisDay()
+    }
+
+    private fun loadOnThisDay() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val cal = Calendar.getInstance()
+            val todayStart = cal.apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+
+            // Check: 1 month ago, 1 year ago
+            val datesToCheck = listOf(30L, 365L)
+            val allOtd = mutableListOf<Entry>()
+
+            for (daysAgo in datesToCheck) {
+                val start = todayStart - daysAgo * 86_400_000L
+                val end = start + 86_400_000L
+                try {
+                    repository.getByDateRange(start, end).first().let { entries ->
+                        if (entries.isNotEmpty()) {
+                            allOtd.addAll(entries)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            _onThisDayEntries.value = allOtd
+        }
+    }
 
     fun setCategory(category: String) {
         _selectedCategory.value = category
@@ -100,6 +142,10 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                 )
 
                 repository.insert(entry)
+
+                // Queue embedding computation in background
+                computeAndStoreEmbedding(entry.id, entry.rawText + " " + entry.summary)
+
             } catch (e: Exception) {
                 // Fallback: insert raw as uncategorized
                 val fallback = Entry(
@@ -114,6 +160,7 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                     priority = "medium"
                 )
                 repository.insert(fallback)
+                computeAndStoreEmbedding(fallback.id, fallback.rawText)
             } finally {
                 // Remove from pending
                 _pendingEntries.value = _pendingEntries.value.filter { it.id != pending.id }
@@ -121,65 +168,65 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ────────── Phase 2 — Card interactions ──────────
+    /** Compute embedding and store. Runs on IO, doesn't block UI. */
+    private fun computeAndStoreEmbedding(id: String, text: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (!embedder.isModelReady) return@launch
+                val vec = embedder.embed(text) ?: return@launch
+                val bytes = embedder.floatArrayToBytes(vec)
+                repository.updateEmbedding(id, bytes)
+            } catch (_: Exception) {
+                // Embedding failure is non-critical — skip silently
+            }
+        }
+    }
+
+    // ────────── Embedding model ──────────
+
+    fun isEmbeddingModelDownloaded(): Boolean = embedder.isDownloaded()
+
+    fun downloadEmbeddingModel(progress: (Float) -> Unit, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            embedder.downloadIfNeeded(progress, onComplete)
+        }
+    }
+
+    fun loadEmbeddingModel() {
+        viewModelScope.launch {
+            embedder.load()
+        }
+    }
+
+    // ────────── Card interactions ──────────
 
     fun archiveEntry(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.archive(id)
-        }
+        viewModelScope.launch(Dispatchers.IO) { repository.archive(id) }
     }
 
     fun deleteEntry(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.delete(id)
-        }
+        viewModelScope.launch(Dispatchers.IO) { repository.delete(id) }
     }
 
     fun toggleDone(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.toggleDone(id)
-        }
+        viewModelScope.launch(Dispatchers.IO) { repository.toggleDone(id) }
     }
 
     fun togglePinned(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.togglePinned(id)
-        }
+        viewModelScope.launch(Dispatchers.IO) { repository.togglePinned(id) }
     }
 
     fun toggleLocked(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.toggleLocked(id)
-        }
+        viewModelScope.launch(Dispatchers.IO) { repository.toggleLocked(id) }
     }
 
     fun answerQuestion(id: String, answer: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.setAnswer(id, answer)
-        }
+        viewModelScope.launch(Dispatchers.IO) { repository.setAnswer(id, answer) }
     }
 
     override fun onCleared() {
         super.onCleared()
         engine.unload()
-    }
-
-    // ────────── "On this day" helpers ──────────
-
-    companion object {
-        /** Get ms for start of day N days ago */
-        fun startOfDayAgo(daysAgo: Long): Long {
-            val cal = java.util.Calendar.getInstance()
-            cal.add(java.util.Calendar.DAY_OF_YEAR, -daysAgo.toInt())
-            cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-            cal.set(java.util.Calendar.MINUTE, 0)
-            cal.set(java.util.Calendar.SECOND, 0)
-            cal.set(java.util.Calendar.MILLISECOND, 0)
-            return cal.timeInMillis
-        }
-
-        fun endOfDayAgo(daysAgo: Long): Long {
-            return startOfDayAgo(daysAgo) + 86_400_000
-        }
+        embedder.unload()
     }
 }

@@ -28,7 +28,7 @@ interface EntryDao {
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun delete(id: String)
 
-    // --- Phase 2 interaction queries ---
+    // --- Phase 2 Week 1 — card interaction queries ---
 
     @Query("UPDATE entries SET isDone = NOT isDone WHERE id = :id")
     suspend fun toggleDone(id: String)
@@ -42,7 +42,19 @@ interface EntryDao {
     @Query("UPDATE entries SET answer = :answer WHERE id = :id")
     suspend fun setAnswer(id: String, answer: String)
 
-    // Simple text search (no FTS5 virtual table set up yet)
+    // --- Phase 2 Week 2 — search ---
+
+    /** FTS4 full-text search across rawText, summary, category, tags */
+    @Query("""
+        SELECT * FROM entries WHERE rowid IN (
+            SELECT rowid FROM entries_fts WHERE entries_fts MATCH :query
+        ) AND isArchived = 0
+        ORDER BY isPinned DESC, createdAt DESC
+        LIMIT 50
+    """)
+    fun searchFts(query: String): Flow<List<Entry>>
+
+    /** Fallback LIKE search (used when FTS query is too short or simple) */
     @Query("""
         SELECT * FROM entries 
         WHERE isArchived = 0 
@@ -53,9 +65,9 @@ interface EntryDao {
         ORDER BY isPinned DESC, createdAt DESC
         LIMIT 50
     """)
-    fun search(query: String): Flow<List<Entry>>
+    fun searchLike(query: String): Flow<List<Entry>>
 
-    // "On this day" — entries from exactly N days ago
+    /** "On this day" — entries from a specific date range */
     @Query("""
         SELECT * FROM entries 
         WHERE isArchived = 0
@@ -65,6 +77,23 @@ interface EntryDao {
     """)
     fun getByDateRange(startOfDay: Long, endOfDay: Long): Flow<List<Entry>>
 
+    /** Update embedding for an entry */
+    @Query("UPDATE entries SET embedding = :embedding WHERE id = :id")
+    suspend fun updateEmbedding(id: String, embedding: ByteArray)
+
+    /** Get all entries without embeddings (for batch embedding) */
+    @Query("SELECT * FROM entries WHERE embedding IS NULL AND isArchived = 0")
+    suspend fun getEntriesWithoutEmbedding(): List<Entry>
+
+    /** Get all embeddings for similarity search */
+    @Query("SELECT id, embedding FROM entries WHERE embedding IS NOT NULL AND isArchived = 0")
+    suspend fun getAllEmbeddings(): List<EntryEmbedding>
+
     @Query("SELECT * FROM entries WHERE isArchived = 0 ORDER BY isPinned DESC, createdAt DESC")
     fun getAllSorted(): Flow<List<Entry>>
 }
+
+data class EntryEmbedding(
+    val id: String,
+    val embedding: ByteArray?
+)
