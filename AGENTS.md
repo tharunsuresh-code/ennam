@@ -58,6 +58,10 @@ Test device: Pixel 7 (Tensor G2)
     - Added `lifecycle-process` dependency for app-level foreground/background detection
     - `Embedder.unload()` fixed to reset `_loaded` flag so reload works after unload
     - `FeedViewModel.unloadAll()` unloads both LLM and embedder models
+    - Background model reload on foreground: no blocking Loading screen, FAB stays visible
+    - Classification queue: inputs submitted while model loads are queued and processed when ready
+    - `LlamaEngine.isLoaded()` getter added for non-blocking model readiness check
+    - Classifier prompt improved: removed grocery-ambiguous todo examples, added "groceries", "shopping" to new-category suggestions
 - **Phase 3**
 - Phase 4 — Cross-platform (Flutter + iOS)
 

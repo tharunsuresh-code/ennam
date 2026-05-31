@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // ── Foreground/background: unload on exit, reload on enter ──
+                // ── Foreground/background: unload on exit, reload in background on enter ──
                 var wasReady by remember { mutableStateOf(false) }
 
                 DisposableEffect(ProcessLifecycleOwner.get()) {
@@ -85,19 +85,14 @@ class MainActivity : ComponentActivity() {
                                 feedViewModel.unloadAll()
                             }
                             Lifecycle.Event.ON_START -> {
-                                // App coming to foreground — reload if needed
-                                if (wasReady && !feedViewModel.isModelDownloaded()) {
-                                    return@LifecycleEventObserver
-                                }
+                                // App coming to foreground — reload in background, keep feed visible
                                 if (wasReady) {
-                                    modelState = ModelState.Loading
                                     scope.launch {
-                                        feedViewModel.loadModel { modelState = ModelState.Ready }
-                                    }
-                                    // Reload embedding models too
-                                    feedViewModel.loadEmbeddingModel()
-                                    if (searchViewModel.isModelDownloaded()) {
-                                        searchViewModel.loadModel()
+                                        feedViewModel.loadModel { /* model ready */ }
+                                        feedViewModel.loadEmbeddingModel()
+                                        if (searchViewModel.isModelDownloaded()) {
+                                            searchViewModel.loadModel()
+                                        }
                                     }
                                 }
                             }

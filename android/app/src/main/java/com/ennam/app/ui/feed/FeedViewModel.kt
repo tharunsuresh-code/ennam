@@ -40,6 +40,13 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _slmReady = MutableStateFlow(false)
 
+    // Queue for inputs submitted while model is loading
+    private data class QueuedInput(
+        val pending: PendingEntry,
+        val inputResult: InputResult
+    )
+    private val classificationQueue = mutableListOf<QueuedInput>()
+
     // "On this day" entries
     private val _onThisDayEntries = MutableStateFlow<List<Entry>>(emptyList())
     val onThisDayEntries: StateFlow<List<Entry>> = _onThisDayEntries.asStateFlow()
@@ -105,10 +112,13 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             if (engine.loadModel()) {
                 _slmReady.value = true
+                processClassificationQueue()
                 onReady()
             }
         }
     }
+
+    fun isModelLoaded(): Boolean = engine.isLoaded()
 
     fun isModelDownloaded(): Boolean = engine.isModelDownloaded()
 
@@ -128,7 +138,17 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         // Show pending immediately
         _pendingEntries.value = _pendingEntries.value + pending
 
-        // Classify in background
+        if (engine.isLoaded()) {
+            // Model ready — classify now
+            classifyAndInsert(pending, inputResult)
+        } else {
+            // Model loading in background — queue for later
+            classificationQueue.add(QueuedInput(pending, inputResult))
+        }
+    }
+
+    /** Classify a single input and insert the result into the DB */
+    private fun classifyAndInsert(pending: PendingEntry, inputResult: InputResult) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val result = classifier.classify(
@@ -171,6 +191,15 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                 // Remove from pending
                 _pendingEntries.value = _pendingEntries.value.filter { it.id != pending.id }
             }
+        }
+    }
+
+    /** Process all queued classifications once the model finishes loading */
+    private fun processClassificationQueue() {
+        val batch = classificationQueue.toList()
+        classificationQueue.clear()
+        for (queued in batch) {
+            classifyAndInsert(queued.pending, queued.inputResult)
         }
     }
 

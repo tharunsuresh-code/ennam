@@ -148,7 +148,7 @@ fun FeedScreen(
             )
         },
         floatingActionButton = {
-            if (modelState == ModelState.Ready && !isSearchActive) {
+            if (modelState != ModelState.Downloading && !isSearchActive) {
                 FloatingActionButton(
                     onClick = { showInputSheet = true }
                 ) {
@@ -164,9 +164,7 @@ fun FeedScreen(
         ) {
             when (modelState) {
                 ModelState.Downloading -> DownloadScreen(progress = 0f, onProgress = {})
-                ModelState.Loading -> LoadingScreen()
-                ModelState.Error -> ErrorScreen()
-                ModelState.Ready -> {
+                ModelState.Loading, ModelState.Ready -> {
                     SearchBar(
                         query = searchQuery,
                         onQueryChange = { searchViewModel.setQuery(it) },
@@ -232,6 +230,7 @@ fun FeedScreen(
                         }
                     }
                 }
+                ModelState.Error -> ErrorScreen()
             }
         }
     }

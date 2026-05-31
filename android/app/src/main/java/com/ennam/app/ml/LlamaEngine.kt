@@ -30,6 +30,9 @@ class LlamaEngine(context: Context) {
     /** Returns true if model file exists on disk */
     fun isModelDownloaded(): Boolean = modelFile.exists()
 
+    /** Returns true if model is loaded in memory */
+    fun isLoaded(): Boolean = isLoaded
+
     /** Returns model file size or 0 */
     fun modelFileSize(): Long = if (modelFile.exists()) modelFile.length() else 0
 
