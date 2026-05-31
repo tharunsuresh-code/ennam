@@ -16,7 +16,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     private val db = AppDatabase.getInstance(application)
     private val repository = EntryRepository(db.entryDao())
-    val embedder = Embedder(application)
+    val embedder = Embedder.getInstance(application)
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
@@ -30,7 +30,15 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _isActive = MutableStateFlow(false)
     val isActive: StateFlow<Boolean> = _isActive.asStateFlow()
 
+    private val _searchMode = MutableStateFlow(SearchMode.KEYWORD)
+    val searchMode: StateFlow<SearchMode> = _searchMode.asStateFlow()
+
     private var searchJob: Job? = null
+
+    enum class SearchMode {
+        KEYWORD,        // LIKE keyword search only
+        KEYWORD_AND_SEMANTIC  // LIKE + semantic merged
+    }
 
     fun setQuery(q: String) {
         _query.value = q
@@ -62,49 +70,60 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private suspend fun search(query: String) {
-        // 1. FTS4 keyword search
-        val ftsResult = mutableListOf<Entry>()
+        // 1. LIKE keyword search — reliable, catches partial matches
+        //    Searches rawText, summary, category, tags columns
+        val likeResults = mutableListOf<Entry>()
         try {
-            repository.search(query).first().let { ftsResult.addAll(it) }
-        } catch (_: Exception) {
-            // Fallback to LIKE
-            try {
-                repository.searchLike(query).first().let { ftsResult.addAll(it) }
-            } catch (_: Exception) {}
+            repository.searchLike(query).first().let { likeResults.addAll(it) }
+        } catch (_: Exception) {}
+
+        // If LIKE finds results, use KEYWORD mode by default
+        _searchMode.value = if (embedder.isModelReady && likeResults.isNotEmpty()) {
+            SearchMode.KEYWORD_AND_SEMANTIC
+        } else {
+            SearchMode.KEYWORD
         }
 
-        // 2. Semantic search (if embedder is ready)
-        val semanticResults = if (embedder.isModelReady) {
+        // 2. Semantic search as enhancement (if model is ready)
+        val mergedResults = if (embedder.isModelReady) {
             try {
                 val queryEmbedding = embedder.embed(query)
                 if (queryEmbedding != null) {
+                    // Fetch all active entries with embeddings
                     val allEntries = mutableListOf<Entry>()
                     try {
                         repository.getAllSorted().first().let { allEntries.addAll(it) }
                     } catch (_: Exception) {}
 
                     if (allEntries.isNotEmpty()) {
+                        val likeIds = likeResults.map { it.id }.toSet()
+
+                        // Score each entry: keyword match bonus + semantic score
                         val scored = allEntries.mapNotNull { entry ->
-                            val emb = entry.embedding
-                            if (emb != null) {
+                            val keywordBonus = if (entry.id in likeIds) 1.0f else 0.0f
+                            val semanticScore = entry.embedding?.let { emb ->
                                 val entryVec = embedder.bytesToFloatArray(emb)
-                                val score = embedder.cosineSimilarity(queryEmbedding, entryVec)
-                                entry to score
-                            } else null
+                                embedder.cosineSimilarity(queryEmbedding, entryVec)
+                            } ?: 0.0f
+
+                            // Combined score: keyword match wins, semantic adds
+                            val combined = keywordBonus + semanticScore * 0.5f
+                            if (combined > 0.2f) entry to combined else null
                         }
-                            .filter { it.second > 0.3f } // similarity threshold
                             .sortedByDescending { it.second }
                             .map { it.first }
+                            .distinctBy { it.id }
 
-                        // Merge: FTS results first, then semantic results not already in FTS
-                        val ftsIds = ftsResult.map { it.id }.toSet()
-                        (ftsResult + scored.filter { it.id !in ftsIds }).distinctBy { it.id }
-                    } else ftsResult
-                } else ftsResult
-            } catch (_: Exception) { ftsResult }
-        } else ftsResult
+                        if (scored.isNotEmpty()) {
+                            _searchMode.value = SearchMode.KEYWORD_AND_SEMANTIC
+                            scored
+                        } else likeResults
+                    } else likeResults
+                } else likeResults
+            } catch (_: Exception) { likeResults }
+        } else likeResults
 
-        _results.value = semanticResults
+        _results.value = mergedResults
     }
 
     /** Download embedding model */
@@ -117,6 +136,24 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     fun loadModel() {
         viewModelScope.launch {
             embedder.load()
+            // Backfill: compute embeddings for entries that don't have them
+            backfillEmbeddings()
+        }
+    }
+
+    /** Compute embeddings for all entries missing them */
+    private suspend fun backfillEmbeddings() {
+        try {
+            val missing = repository.getEntriesWithoutEmbedding()
+            if (missing.isEmpty()) return
+            for (entry in missing) {
+                val text = "${entry.rawText} ${entry.summary}"
+                val vec = embedder.embed(text) ?: continue
+                val bytes = embedder.floatArrayToBytes(vec)
+                repository.updateEmbedding(entry.id, bytes)
+            }
+        } catch (_: Exception) {
+            // Backfill failure is non-critical
         }
     }
 

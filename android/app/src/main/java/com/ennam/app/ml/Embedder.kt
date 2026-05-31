@@ -16,8 +16,11 @@ import kotlin.math.sqrt
  * ONNX Runtime wrapper for all-MiniLM-L6-v2 sentence embeddings.
  * Produces 384-dim float32 embeddings for semantic search.
  * Model + vocab downloaded to app's files dir on first use (~90MB).
+ *
+ * Uses a shared static `_instance` so FeedViewModel and SearchViewModel
+ * share the same loaded model rather than downloading twice.
  */
-class Embedder(private val context: Context) {
+class Embedder private constructor(private val context: Context) {
 
     private val modelDir: File get() = File(context.filesDir, "embeddings")
     private val modelFile: File get() = File(modelDir, "model.onnx")
@@ -183,6 +186,15 @@ class Embedder(private val context: Context) {
     // ── BERT Tokenizer ──
 
     companion object {
+        @Volatile
+        private var _instance: Embedder? = null
+
+        fun getInstance(context: Context): Embedder {
+            return _instance ?: synchronized(this) {
+                _instance ?: Embedder(context.applicationContext).also { _instance = it }
+            }
+        }
+
         private const val CLS_ID = 101
         private const val SEP_ID = 102
         private const val UNK_ID = 100

@@ -29,7 +29,7 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     val repository = EntryRepository(db.entryDao())
     private val engine = LlamaEngine(application)
     private val classifier = Classifier(engine)
-    val embedder = Embedder(application)
+    val embedder = Embedder.getInstance(application)
 
     private val _selectedCategory = MutableStateFlow("")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
@@ -195,6 +195,16 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     fun loadEmbeddingModel() {
         viewModelScope.launch {
             embedder.load()
+            // Backfill embeddings for existing entries
+            try {
+                val missing = repository.getEntriesWithoutEmbedding()
+                for (entry in missing) {
+                    val text = "${entry.rawText} ${entry.summary}"
+                    val vec = embedder.embed(text) ?: continue
+                    val bytes = embedder.floatArrayToBytes(vec)
+                    repository.updateEmbedding(entry.id, bytes)
+                }
+            } catch (_: Exception) {}
         }
     }
 
