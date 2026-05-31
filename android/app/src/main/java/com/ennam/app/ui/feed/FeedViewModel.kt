@@ -151,8 +151,20 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     private fun classifyAndInsert(pending: PendingEntry, inputResult: InputResult) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Fetch recent entries as few-shot examples for better categorization
+                val examples = try {
+                    repository.getAllActive().first()
+                        .filter { it.id != pending.id && it.summary.isNotBlank() }
+                        .take(5)
+                        .map { Pair(it.rawText, it.category) }
+                } catch (_: Exception) { emptyList() }
+
                 val result = classifier.classify(
-                    Classifier.ClassifyInput(inputResult.rawText, inputResult.sourceType)
+                    Classifier.ClassifyInput(
+                        rawText = inputResult.rawText,
+                        sourceType = inputResult.sourceType,
+                        examples = examples
+                    )
                 )
 
                 val entry = Entry(

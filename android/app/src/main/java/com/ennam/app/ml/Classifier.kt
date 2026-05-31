@@ -32,6 +32,15 @@ class Classifier(private val engine: LlamaEngine) {
             append("- screenshot: Image or visual capture (sourceType=image)\n")
             append("- idea: General thought, concept, inspiration\n\n")
             append("If none of the above fit well, suggest a short new category label (1-2 words, lowercase) that captures this note's theme. For example: \"groceries\", \"recipe\", \"coding\", \"workout\", \"movie\", \"quote\", \"shopping\", \"health\".\n\n")
+            // Few-shot examples from recent confirmed entries
+            if (input.examples.isNotEmpty()) {
+                append("Here are examples of how recent notes were categorized:\n")
+                input.examples.take(5).forEachIndexed { i, (text, cat) ->
+                    val preview = text.replace("\n", " ").take(80)
+                    append("${i + 1}. \"$preview\" → $cat\n")
+                }
+                append("\n")
+            }
             append("Return JSON: {\"category\":\"\",\"summary\":\"1-2 line summary\",\"tags\":[],\"actionable\":false,\"priority\":\"low/med/high\"}\n")
             append("<|im_end|>\n<|im_start|>user\n")
             append("${input.rawText}\n")
@@ -44,7 +53,8 @@ class Classifier(private val engine: LlamaEngine) {
 
     data class ClassifyInput(
         val rawText: String,
-        val sourceType: String  // "text", "voice", "image"
+        val sourceType: String,  // "text", "voice", "image"
+        val examples: List<Pair<String, String>> = emptyList()  // (rawText, category) few-shot examples
     )
 
     /** Classify a single input. Runs on the calling thread (should be background). */

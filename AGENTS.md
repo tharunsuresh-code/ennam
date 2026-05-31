@@ -62,6 +62,8 @@ Test device: Pixel 7 (Tensor G2)
     - Classification queue: inputs submitted while model loads are queued and processed when ready
     - `LlamaEngine.isLoaded()` getter added for non-blocking model readiness check
     - Classifier prompt improved: removed grocery-ambiguous todo examples, added "groceries", "shopping" to new-category suggestions
+    - Few-shot learning: classifier injects 5 most recent entries as examples before each classification
+    - Every manual recategorization teaches the next classification
 - **Phase 3**
 - Phase 4 — Cross-platform (Flutter + iOS)
 
