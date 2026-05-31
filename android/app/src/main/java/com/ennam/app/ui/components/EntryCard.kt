@@ -1,10 +1,5 @@
 package com.ennam.app.ui.components
 
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -18,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -29,7 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.ennam.app.data.model.Entry
 import com.ennam.app.data.model.PendingEntry
 
-private val categoryEmojis = mapOf(
+val categoryEmojis = mapOf(
     "todo" to "\u2705", "idea" to "\uD83D\uDCA1", "receipt" to "\uD83E\uDDFE",
     "journal" to "\uD83D\uDCDD", "bookmark" to "\uD83D\uDCD6",
     "question" to "\u2753", "screenshot" to "\uD83D\uDCF8"
@@ -46,7 +40,8 @@ data class CardCallbacks(
     val onTogglePin: (String) -> Unit = {},
     val onAnswer: (String, String) -> Unit = { _, _ -> },
     val onToggleLocked: (String) -> Unit = {},
-    val onOpenUrl: (String) -> Unit = {}
+    val onOpenUrl: (String) -> Unit = {},
+    val onCardTap: (Entry) -> Unit = {}
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -94,6 +89,7 @@ private fun EntryBody(entry: Entry, maxLines: Int = 3) {
 
 // ────────── TODO ──────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TodoCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
     val priorityColor = when (entry.priority) {
@@ -114,7 +110,8 @@ private fun TodoCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier)
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .combinedClickable(onClick = { callbacks.onCardTap(entry) }),
         colors = CardDefaults.cardColors(containerColor = bgColor)
     ) {
         Row(
@@ -169,13 +166,12 @@ private fun TodoCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun IdeaCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
-    var expanded by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .combinedClickable(onClick = { expanded = !expanded }),
+            .combinedClickable(onClick = { callbacks.onCardTap(entry) }),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
         )
@@ -187,45 +183,36 @@ private fun IdeaCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier)
                 Text(
                     text = entry.rawText,
                     fontWeight = FontWeight.Medium,
-                    maxLines = if (expanded) Int.MAX_VALUE else 3,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            // Always show full raw text + summary on expansion
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(),
-                exit = shrinkVertically()
-            ) {
-                Column {
-                    // Show summary as a subtitle if it differs
-                    if (entry.summary.isNotBlank() && entry.summary != entry.rawText) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = entry.summary.take(300),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontStyle = FontStyle.Italic,
-                            maxLines = 5,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+            // Always show summary as a subtitle if it differs
+            if (entry.summary.isNotBlank() && entry.summary != entry.rawText) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = entry.summary.take(300),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontStyle = FontStyle.Italic,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
-                    // Show tags
-                    if (entry.tags.isNotBlank() && entry.tags != "[]") {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "\uD83C\uDFF7\uFE0F " + entry.tags
-                                .removeSurrounding("[", "]")
-                                .replace("\"", "")
-                                .replace(",", " \u00B7 "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+            // Show tags
+            if (entry.tags.isNotBlank() && entry.tags != "[]") {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "\uD83C\uDFF7\uFE0F " + entry.tags
+                        .removeSurrounding("[", "]")
+                        .replace("\"", "")
+                        .replace(",", " \u00B7 "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(Modifier.height(4.dp))
@@ -276,7 +263,7 @@ private fun ReceiptCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .combinedClickable(onClick = {}, onLongClick = { showMenu.value = true }),
+            .combinedClickable(onClick = { callbacks.onCardTap(entry) }, onLongClick = { showMenu.value = true }),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
         )
@@ -363,7 +350,7 @@ private fun JournalCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .combinedClickable(
-                onClick = {},
+                onClick = { callbacks.onCardTap(entry) },
                 onLongClick = { callbacks.onToggleLocked(entry.id) }
             ),
         colors = CardDefaults.cardColors(
@@ -418,18 +405,13 @@ private val urlRegex = Regex("""https?://[^\s,;!?)]+""")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BookmarkCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
-    val context = LocalContext.current
     val url = remember(entry.rawText) { urlRegex.find(entry.rawText)?.value ?: "" }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .combinedClickable(onClick = {
-                if (url.isNotBlank()) {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                }
-            }),
+            .combinedClickable(onClick = { callbacks.onCardTap(entry) }),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -489,6 +471,7 @@ private fun BookmarkCard(entry: Entry, callbacks: CardCallbacks, modifier: Modif
 
 // ────────── QUESTION ──────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QuestionCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
     var answerText by remember { mutableStateOf(entry.answer) }
@@ -497,7 +480,8 @@ private fun QuestionCard(entry: Entry, callbacks: CardCallbacks, modifier: Modif
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .combinedClickable(onClick = { callbacks.onCardTap(entry) }),
         colors = CardDefaults.cardColors(
             containerColor = if (resolved)
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -566,7 +550,7 @@ private fun ScreenshotCard(entry: Entry, callbacks: CardCallbacks, modifier: Mod
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .combinedClickable(onClick = { callbacks.onTogglePin(entry.id) }),
+            .combinedClickable(onClick = { callbacks.onCardTap(entry) }),
         colors = CardDefaults.cardColors(
             containerColor = if (entry.isPinned)
                 MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
@@ -617,23 +601,36 @@ private fun ScreenshotCard(entry: Entry, callbacks: CardCallbacks, modifier: Mod
                 )
             }
             Spacer(Modifier.height(2.dp))
-            Text(
-                text = if (entry.isPinned) "\uD83D\uDCCC Pinned \u00B7 tap to unpin" else "Tap to pin to top",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "\uD83D\uDCF8 Screenshot",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (entry.isPinned) {
+                    Icon(
+                        Icons.Default.PushPin, contentDescription = "Pinned",
+                        modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }
 
 // ────────── GENERIC FALLBACK ──────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun GenericCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .combinedClickable(onClick = { callbacks.onCardTap(entry) }),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )

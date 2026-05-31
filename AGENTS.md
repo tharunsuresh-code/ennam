@@ -41,6 +41,13 @@ Test device: Pixel 7 (Tensor G2)
     - FeedViewModel: archiveEntry, toggleDone, togglePin, answerQuestion, toggleLocked
     - AppDatabase v2 (fallbackToDestructiveMigration)
     - **Fix**: mood emoji regex used `[...]` character class with supplementary Unicode — Android ICU can't handle surrogate pairs in char classes. Changed to `|` alternation.
+- **Phase 2 Week 3** — Card tap bottom sheet + auto-scroll (31 May 2026)
+    - All cards now open a unified bottom sheet on tap with Edit, Archive, Delete
+    - Edit opens inline text editing in bottom sheet → saves to DB + recomputes embedding
+    - Auto-scroll to newest entry on new entry creation (via LazyListState + LaunchedEffect)
+    - Category-specific bottom sheet actions: Pin/Unpin (screenshot), Open Link (bookmark), Done/Undo (todo)
+    - Removed per-card tap behaviors (Idea expand, Screenshot pin, Bookmark URL open) in favor of bottom sheet
+    - `updateRawText` Room query + `FeedViewModel.updateEntryText()` for inline editing
 - **Phase 3**
 - Phase 4 — Cross-platform (Flutter + iOS)
 

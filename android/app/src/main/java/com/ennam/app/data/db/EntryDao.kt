@@ -42,6 +42,9 @@ interface EntryDao {
     @Query("UPDATE entries SET answer = :answer WHERE id = :id")
     suspend fun setAnswer(id: String, answer: String)
 
+    @Query("UPDATE entries SET rawText = :rawText WHERE id = :id")
+    suspend fun updateRawText(id: String, rawText: String)
+
     // --- Phase 2 Week 2 — search ---
 
     /** FTS4 full-text search across rawText, summary, category, tags */

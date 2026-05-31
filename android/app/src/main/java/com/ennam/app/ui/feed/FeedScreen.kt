@@ -1,21 +1,36 @@
 package com.ennam.app.ui.feed
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ennam.app.data.model.Entry
 import com.ennam.app.ui.components.CardCallbacks
 import com.ennam.app.ui.components.CategoryTabs
 import com.ennam.app.ui.components.EntryCard
 import com.ennam.app.ui.components.PendingEntryCard
+import com.ennam.app.ui.components.categoryEmojis
 import com.ennam.app.ui.input.InputSheet
 import com.ennam.app.ui.search.SearchBar
 import com.ennam.app.ui.search.SearchResults
@@ -41,6 +56,31 @@ fun FeedScreen(
 
     var showInputSheet by remember { mutableStateOf(false) }
 
+    // ── Auto-scroll when new entries appear ──
+    val listState = rememberLazyListState()
+    val prevEntryCount = remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(entries.size) {
+        val newCount = entries.size
+        // Only auto-scroll when exactly 1 new entry was added (not category switch)
+        if (newCount > 0 && newCount == prevEntryCount.intValue + 1) {
+            listState.animateScrollToItem(0)
+        }
+        prevEntryCount.intValue = newCount
+    }
+
+    // Reset prevEntryCount when category changes
+    LaunchedEffect(selectedCategory) {
+        prevEntryCount.intValue = entries.size
+    }
+
+    // ── Selected entry for bottom sheet ──
+    var selectedEntry by remember { mutableStateOf<Entry?>(null) }
+    var editEntryId by remember { mutableStateOf<String?>(null) }
+    var editEntryText by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+
     val callbacks = CardCallbacks(
         onArchive = { viewModel.archiveEntry(it) },
         onDelete = { viewModel.deleteEntry(it) },
@@ -51,8 +91,39 @@ fun FeedScreen(
         onTogglePin = { viewModel.togglePinned(it) },
         onAnswer = { id, answer -> viewModel.answerQuestion(id, answer) },
         onToggleLocked = { viewModel.toggleLocked(it) },
-        onOpenUrl = { _ -> }
+        onOpenUrl = { url ->
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        },
+        onCardTap = { entry ->
+            selectedEntry = entry
+            editEntryId = null
+            editEntryText = entry.rawText
+        }
     )
+
+    // ── Bottom sheet for card actions ──
+    if (selectedEntry != null) {
+        CardActionSheet(
+            entry = selectedEntry!!,
+            callbacks = callbacks,
+            isEditing = editEntryId == selectedEntry!!.id,
+            editText = editEntryText,
+            onEditTextChange = { editEntryText = it },
+            onStartEdit = { editEntryId = selectedEntry!!.id },
+            onSaveEdit = {
+                val entry = selectedEntry ?: return@CardActionSheet
+                if (editEntryText.isNotBlank() && editEntryText != entry.rawText) {
+                    viewModel.updateEntryText(entry.id, editEntryText)
+                }
+                editEntryId = null
+                selectedEntry = null
+            },
+            onDismiss = {
+                selectedEntry = null
+                editEntryId = null
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -115,6 +186,7 @@ fun FeedScreen(
                             EmptyState()
                         } else {
                             LazyColumn(
+                                state = listState,
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(vertical = 4.dp)
                             ) {
@@ -164,6 +236,202 @@ fun FeedScreen(
         )
     }
 }
+
+// ────────── CARD ACTION BOTTOM SHEET ──────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CardActionSheet(
+    entry: Entry,
+    callbacks: CardCallbacks,
+    isEditing: Boolean,
+    editText: String,
+    onEditTextChange: (String) -> Unit,
+    onStartEdit: () -> Unit,
+    onSaveEdit: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+        ) {
+            // ── Edit mode ──
+            if (isEditing) {
+                Text("Edit Entry", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = editText,
+                    onValueChange = onEditTextChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4,
+                    maxLines = 10,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { onSaveEdit() })
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = {
+                        onEditTextChange(entry.rawText)
+                        onDismiss()
+                    }) {
+                        Text("Cancel")
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Button(onClick = onSaveEdit) {
+                        Text("Save")
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+                return@Column
+            }
+
+            // ── Entry info ──
+            Text(
+                text = entry.rawText,
+                fontWeight = FontWeight.Medium,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (entry.summary.isNotBlank() && entry.summary != entry.rawText) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = entry.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "${categoryEmojis[entry.category] ?: ""} ${entry.category}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+
+            // ── Action buttons ──
+            // Edit
+            TextButton(
+                onClick = onStartEdit,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("Edit text", modifier = Modifier.weight(1f))
+            }
+
+            // Category-specific actions
+            when (entry.category) {
+                "screenshot" -> {
+                    TextButton(
+                        onClick = {
+                            callbacks.onTogglePin(entry.id)
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Default.PushPin,
+                            contentDescription = if (entry.isPinned) "Unpin" else "Pin",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            if (entry.isPinned) "Unpin from top" else "Pin to top",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                "bookmark" -> {
+                    val url = remember(entry.rawText) {
+                        Regex("""https?://[^\s,;!?)]+""").find(entry.rawText)?.value ?: ""
+                    }
+                    if (url.isNotBlank()) {
+                        TextButton(
+                            onClick = {
+                                callbacks.onOpenUrl(url)
+                                onDismiss()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                Icons.Default.OpenInBrowser,
+                                contentDescription = "Open URL",
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text("Open link", modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+                "todo" -> {
+                    TextButton(
+                        onClick = {
+                            callbacks.onToggleDone(entry.id)
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = if (entry.isDone) "Undo" else "Done",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            if (entry.isDone) "Mark as not done" else "Mark as done (archive)",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            // Archive
+            TextButton(
+                onClick = {
+                    callbacks.onArchive(entry.id)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Archive, contentDescription = "Archive", modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("Archive", modifier = Modifier.weight(1f))
+            }
+
+            // Delete
+            TextButton(
+                onClick = {
+                    callbacks.onDelete(entry.id)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("Delete", modifier = Modifier.weight(1f))
+            }
+
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+// ────────── SCREEN STATE COMPOSABLES ──────────
 
 @Composable
 private fun DownloadScreen(progress: Float, onProgress: (Float) -> Unit) {

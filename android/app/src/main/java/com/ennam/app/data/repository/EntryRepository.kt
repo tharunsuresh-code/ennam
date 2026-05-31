@@ -41,4 +41,6 @@ class EntryRepository(private val entryDao: EntryDao) {
 
     suspend fun getEntriesWithoutEmbedding(): List<Entry> =
         entryDao.getEntriesWithoutEmbedding()
+
+    suspend fun updateRawText(id: String, rawText: String) = entryDao.updateRawText(id, rawText)
 }

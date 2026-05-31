@@ -135,7 +135,7 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                     sourceType = pending.sourceType,
                     rawText = pending.rawText,
                     summary = result.summary,
-                    category = result.category,
+                    category = inputResult.categoryOverride ?: result.category,
                     tags = result.tags.joinToString(",") { "\"$it\"" }.let { "[$it]" },
                     actionable = result.actionable,
                     priority = result.priority
@@ -232,6 +232,15 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
 
     fun answerQuestion(id: String, answer: String) {
         viewModelScope.launch(Dispatchers.IO) { repository.setAnswer(id, answer) }
+    }
+
+    fun updateEntryText(id: String, newText: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateRawText(id, newText)
+            // Recompute embedding for updated text
+            val entry = repository.getById(id) ?: return@launch
+            computeAndStoreEmbedding(id, newText + " " + entry.summary)
+        }
     }
 
     override fun onCleared() {
