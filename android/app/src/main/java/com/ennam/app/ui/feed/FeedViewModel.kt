@@ -8,6 +8,7 @@ import com.ennam.app.data.model.Entry
 import com.ennam.app.data.model.PendingEntry
 import com.ennam.app.data.repository.EntryRepository
 import com.ennam.app.ml.Classifier
+import com.ennam.app.ml.ClusterEngine
 import com.ennam.app.ml.Embedder
 import com.ennam.app.ml.LlamaEngine
 import com.ennam.app.ui.input.InputResult
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -31,6 +33,50 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = LlamaEngine(application)
     private val classifier = Classifier(engine)
     val embedder = Embedder.getInstance(application)
+    private val clusterEngine = ClusterEngine()
+
+    // ────────── View mode: Categories or Clusters ──────────
+
+    enum class ViewMode { Categories, Clusters }
+
+    private val _viewMode = MutableStateFlow(ViewMode.Categories)
+    val viewMode: StateFlow<ViewMode> = _viewMode.asStateFlow()
+
+    private val _clusters = MutableStateFlow<List<ClusterEngine.Cluster>>(emptyList())
+    val clusters: StateFlow<List<ClusterEngine.Cluster>> = _clusters.asStateFlow()
+
+    private val _selectedClusterId = MutableStateFlow(-1)
+    val selectedClusterId: StateFlow<Int> = _selectedClusterId.asStateFlow()
+
+    fun toggleViewMode() {
+        _viewMode.value = if (_viewMode.value == ViewMode.Categories) ViewMode.Clusters else ViewMode.Categories
+        recomputeClusters()
+    }
+
+    fun selectCluster(id: Int) {
+        _selectedClusterId.value = id
+    }
+
+    private fun recomputeClusters() {
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                val all = repository.getAllActive().first()
+                val result = clusterEngine.compute(all)
+                _clusters.value = result
+                if (_selectedClusterId.value < 0 && result.isNotEmpty()) {
+                    _selectedClusterId.value = result[0].id
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    /** Entries filtered by the selected cluster (empty unless in cluster view) */
+    val clusterEntries: StateFlow<List<Entry>> = combine(
+        repository.getAllActive(), _selectedClusterId, _clusters
+    ) { allEntries, selId, cls ->
+        if (selId < 0 || cls.isEmpty()) emptyList()
+        else cls.find { it.id == selId }?.entries ?: emptyList()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selectedCategory = MutableStateFlow("")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
@@ -184,6 +230,9 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                 // Queue embedding computation in background
                 computeAndStoreEmbedding(entry.id, entry.rawText + " " + entry.summary)
 
+                // Refresh clusters after new entry
+                recomputeClusters()
+
             } catch (e: Exception) {
                 // Fallback: insert raw as uncategorized
                 val fallback = Entry(
@@ -251,6 +300,8 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                     val bytes = embedder.floatArrayToBytes(vec)
                     repository.updateEmbedding(entry.id, bytes)
                 }
+                // Refresh clusters after embedding backfill
+                recomputeClusters()
             } catch (_: Exception) {}
         }
     }

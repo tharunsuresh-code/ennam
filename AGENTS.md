@@ -64,7 +64,13 @@ Test device: Pixel 7 (Tensor G2)
     - Classifier prompt improved: removed grocery-ambiguous todo examples, added "groceries", "shopping" to new-category suggestions
     - Few-shot learning: classifier injects 5 most recent entries as examples before each classification
     - Every manual recategorization teaches the next classification
-- **Phase 3**
+- **Phase 3** — Topic clustering (31 May 2026)
+    - ClusterEngine: threshold-based clustering on 384-dim sentence embeddings
+    - Similarity graph: connected components where cosine similarity > 0.55
+    - Auto-generated cluster labels from top keywords (no SLM calls)
+    - UI toggle between Categories and Clusters view
+    - Cluster tabs show label + entry count, filter feed by selected cluster
+    - Clusters recompute automatically on new entries and embedding backfill
 - Phase 4 — Cross-platform (Flutter + iOS)
 
 ## Architecture

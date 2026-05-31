@@ -183,15 +183,77 @@ fun FeedScreen(
                         )
                     } else {
                         val dynamicCategories by viewModel.dynamicCategories.collectAsState()
+                        val viewMode by viewModel.viewMode.collectAsState()
+                        val clusters by viewModel.clusters.collectAsState()
+                        val selectedClusterId by viewModel.selectedClusterId.collectAsState()
+                        val clusterEntries by viewModel.clusterEntries.collectAsState()
 
-                        CategoryTabs(
-                            selectedLabel = selectedCategory.ifBlank { "All" },
-                            categories = dynamicCategories,
-                            onCategorySelected = { viewModel.setCategory(it) }
-                        )
+                        // View mode toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            FilterChip(
+                                selected = viewMode == FeedViewModel.ViewMode.Categories,
+                                onClick = { if (viewMode != FeedViewModel.ViewMode.Categories) viewModel.toggleViewMode() },
+                                label = { Text("Categories") }
+                            )
+                            FilterChip(
+                                selected = viewMode == FeedViewModel.ViewMode.Clusters,
+                                onClick = { if (viewMode != FeedViewModel.ViewMode.Clusters) viewModel.toggleViewMode() },
+                                label = { Text("Clusters") }
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+
+                        when (viewMode) {
+                            FeedViewModel.ViewMode.Categories -> {
+                                CategoryTabs(
+                                    selectedLabel = selectedCategory.ifBlank { "All" },
+                                    categories = dynamicCategories,
+                                    onCategorySelected = { viewModel.setCategory(it) }
+                                )
+                            }
+                            FeedViewModel.ViewMode.Clusters -> {
+                                if (clusters.isNotEmpty()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState())
+                                            .padding(horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        clusters.forEach { cluster ->
+                                            FilterChip(
+                                                selected = selectedClusterId == cluster.id,
+                                                onClick = { viewModel.selectCluster(cluster.id) },
+                                                label = {
+                                                    Text("${cluster.label} (${cluster.entries.size})")
+                                                }
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        "Computing clusters...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 16.dp)
+                                    )
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(8.dp))
 
-                        if (entries.isEmpty() && pendingEntries.isEmpty() && onThisDayEntries.isEmpty()) {
+                        val displayList = when (viewMode) {
+                            FeedViewModel.ViewMode.Categories -> entries
+                            FeedViewModel.ViewMode.Clusters -> clusterEntries
+                        }
+
+                        if (displayList.isEmpty() && pendingEntries.isEmpty() && onThisDayEntries.isEmpty()) {
                             EmptyState()
                         } else {
                             LazyColumn(
@@ -223,7 +285,7 @@ fun FeedScreen(
                                     }
                                 }
 
-                                items(entries, key = { it.id }) { entry ->
+                                items(displayList, key = { it.id }) { entry ->
                                     EntryCard(entry = entry, callbacks = callbacks)
                                 }
                             }
