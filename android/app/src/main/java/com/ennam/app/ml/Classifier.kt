@@ -23,10 +23,21 @@ class Classifier(private val engine: LlamaEngine) {
     private fun buildPrompt(input: ClassifyInput): String {
         return buildString {
             append("<|im_start|>system\n")
-            append("Categorize into: idea/todo/receipt/journal/bookmark/question/screenshot. ")
-            append("Return JSON: {\"category\":\"\",\"summary\":\"1-2 line\",\"tags\":[],\"actionable\":false,\"priority\":\"low/med/high\"}\n")
+            append("Categorize the user's note. Common types:\n")
+            append("- todo: Task or action item (e.g., \"pick up milk\", \"call dentist\", \"buy groceries\")\n")
+            append("- receipt: Purchase, expense, or payment (e.g., \"bought coffee $5\", \"paid rent $1200\")\n")
+            append("- journal: Personal diary entry, reflection, or experience (e.g., \"Had a great day at the park\")\n")
+            append("- bookmark: URL, link, or reference to save for later (e.g., \"check out this website\", \"cool article at...\")\n")
+            append("- question: A query or thing to look up (e.g., \"what is the capital of France?\", \"how do I fix a leaky faucet?\")\n")
+            append("- screenshot: Image or visual capture (sourceType=image)\n")
+            append("- idea: General thought, concept, inspiration\n\n")
+            append("If none of the above fit well, suggest a short new category label (1-2 words, lowercase) that captures this note's theme. For example: \"recipe\", \"coding\", \"workout\", \"movie\", \"quote\".\n\n")
+            append("Return JSON: {\"category\":\"\",\"summary\":\"1-2 line summary\",\"tags\":[],\"actionable\":false,\"priority\":\"low/med/high\"}\n")
             append("<|im_end|>\n<|im_start|>user\n")
             append("${input.rawText}\n")
+            if (input.sourceType == "image") {
+                append("(source: image)\n")
+            }
             append("<|im_end|>\n<|im_start|>assistant\n")
         }
     }

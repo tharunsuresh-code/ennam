@@ -45,6 +45,12 @@ interface EntryDao {
     @Query("UPDATE entries SET rawText = :rawText WHERE id = :id")
     suspend fun updateRawText(id: String, rawText: String)
 
+    @Query("UPDATE entries SET category = :category WHERE id = :id")
+    suspend fun updateCategory(id: String, category: String)
+
+    @Query("SELECT DISTINCT category FROM entries WHERE isArchived = 0 ORDER BY category ASC")
+    suspend fun getDistinctCategories(): List<String>
+
     // --- Phase 2 Week 2 — search ---
 
     /** FTS4 full-text search across rawText, summary, category, tags */

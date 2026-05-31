@@ -8,23 +8,26 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-val ALL_CATEGORIES = listOf(
-    "All", "Ideas", "Todos", "Receipts", "Journal", "Bookmarks", "Questions"
+/** Known category slugs → display labels */
+val KNOWN_CATEGORIES = mapOf(
+    "idea" to "Ideas",
+    "todo" to "Todos",
+    "receipt" to "Receipts",
+    "journal" to "Journal",
+    "bookmark" to "Bookmarks",
+    "question" to "Questions",
+    "screenshot" to "Screenshots"
 )
 
-private val categoryToSlug = mapOf(
-    "All" to "",
-    "Ideas" to "idea",
-    "Todos" to "todo",
-    "Receipts" to "receipt",
-    "Journal" to "journal",
-    "Bookmarks" to "bookmark",
-    "Questions" to "question"
-)
+/** Convert a category slug to its display label. Capitalizes unknown slugs. */
+fun categoryLabel(slug: String): String {
+    return KNOWN_CATEGORIES[slug] ?: slug.replaceFirstChar { it.uppercase() }
+}
 
 @Composable
 fun CategoryTabs(
     selectedLabel: String,
+    categories: List<String>,  // dynamic category slugs from the DB
     onCategorySelected: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -35,10 +38,17 @@ fun CategoryTabs(
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ALL_CATEGORIES.forEach { label ->
+        // "All" is always first
+        FilterChip(
+            selected = selectedLabel == "All",
+            onClick = { onCategorySelected("") },
+            label = { Text("All") }
+        )
+        categories.forEach { slug ->
+            val label = categoryLabel(slug)
             FilterChip(
                 selected = selectedLabel == label,
-                onClick = { onCategorySelected(categoryToSlug[label] ?: label.lowercase()) },
+                onClick = { onCategorySelected(slug) },
                 label = { Text(label) }
             )
         }

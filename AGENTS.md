@@ -48,6 +48,12 @@ Test device: Pixel 7 (Tensor G2)
     - Category-specific bottom sheet actions: Pin/Unpin (screenshot), Open Link (bookmark), Done/Undo (todo)
     - Removed per-card tap behaviors (Idea expand, Screenshot pin, Bookmark URL open) in favor of bottom sheet
     - `updateRawText` Room query + `FeedViewModel.updateEntryText()` for inline editing
+    - Recategorization in edit mode: category picker chips in the edit bottom sheet
+    - Dynamic categories: categories derived from active entries (no hardcoded list)
+    - CategoryTabs accepts dynamic category list from FeedViewModel
+    - Classifier prompt updated to allow suggesting new categories beyond the 7 predefined types
+    - New categories automatically appear in tabs and in both InputSheet and edit bottom sheet pickers
+    - `updateCategory`, `getDistinctCategories` Room queries + `updateEntryCategory` in ViewModel
 - **Phase 3**
 - Phase 4 — Cross-platform (Flutter + iOS)
 

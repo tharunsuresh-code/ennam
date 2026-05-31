@@ -2,10 +2,12 @@ package com.ennam.app.ui.feed
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -31,6 +33,7 @@ import com.ennam.app.ui.components.CategoryTabs
 import com.ennam.app.ui.components.EntryCard
 import com.ennam.app.ui.components.PendingEntryCard
 import com.ennam.app.ui.components.categoryEmojis
+import com.ennam.app.ui.components.categoryLabel
 import com.ennam.app.ui.input.InputSheet
 import com.ennam.app.ui.search.SearchBar
 import com.ennam.app.ui.search.SearchResults
@@ -103,17 +106,22 @@ fun FeedScreen(
 
     // ── Bottom sheet for card actions ──
     if (selectedEntry != null) {
+        val dynamicCategories by viewModel.dynamicCategories.collectAsState()
+
         CardActionSheet(
             entry = selectedEntry!!,
             callbacks = callbacks,
+            categories = dynamicCategories,
             isEditing = editEntryId == selectedEntry!!.id,
             editText = editEntryText,
             onEditTextChange = { editEntryText = it },
             onStartEdit = { editEntryId = selectedEntry!!.id },
-            onSaveEdit = {
+            onSaveEdit = { newCategory ->
                 val entry = selectedEntry ?: return@CardActionSheet
                 if (editEntryText.isNotBlank() && editEntryText != entry.rawText) {
-                    viewModel.updateEntryText(entry.id, editEntryText)
+                    viewModel.updateEntryText(entry.id, editEntryText, newCategory)
+                } else if (newCategory != null) {
+                    viewModel.updateEntryCategory(entry.id, newCategory)
                 }
                 editEntryId = null
                 selectedEntry = null
@@ -176,8 +184,11 @@ fun FeedScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
+                        val dynamicCategories by viewModel.dynamicCategories.collectAsState()
+
                         CategoryTabs(
                             selectedLabel = selectedCategory.ifBlank { "All" },
+                            categories = dynamicCategories,
                             onCategorySelected = { viewModel.setCategory(it) }
                         )
                         Spacer(Modifier.height(8.dp))
@@ -227,12 +238,14 @@ fun FeedScreen(
 
     // Input bottom sheet
     if (showInputSheet) {
+        val dynamicCategories by viewModel.dynamicCategories.collectAsState()
         InputSheet(
             onDismiss = { showInputSheet = false },
             onInput = { result ->
                 showInputSheet = false
                 viewModel.onInput(result)
-            }
+            },
+            dynamicCategories = dynamicCategories
         )
     }
 }
@@ -244,11 +257,12 @@ fun FeedScreen(
 private fun CardActionSheet(
     entry: Entry,
     callbacks: CardCallbacks,
+    categories: List<String>,
     isEditing: Boolean,
     editText: String,
     onEditTextChange: (String) -> Unit,
     onStartEdit: () -> Unit,
-    onSaveEdit: () -> Unit,
+    onSaveEdit: (String?) -> Unit,  // (newCategory: slug or null if unchanged)
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -259,6 +273,8 @@ private fun CardActionSheet(
         ) {
             // ── Edit mode ──
             if (isEditing) {
+                var editCategory by remember(entry.id) { mutableStateOf(entry.category) }
+
                 Text("Edit Entry", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
@@ -268,8 +284,31 @@ private fun CardActionSheet(
                     minLines = 4,
                     maxLines = 10,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { onSaveEdit() })
+                    keyboardActions = KeyboardActions(onDone = { onSaveEdit(editCategory) })
                 )
+
+                Spacer(Modifier.height(16.dp))
+                Text("Category", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(6.dp))
+                // Category picker — current + available dynamic categories
+                val allCategoryOptions = remember(categories) {
+                    val slugs = categories.toMutableList()
+                    if (entry.category !in slugs) slugs.add(0, entry.category)
+                    slugs
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    allCategoryOptions.forEach { slug ->
+                        FilterChip(
+                            selected = editCategory == slug,
+                            onClick = { editCategory = slug },
+                            label = { Text(categoryLabel(slug)) }
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -282,7 +321,10 @@ private fun CardActionSheet(
                         Text("Cancel")
                     }
                     Spacer(Modifier.width(12.dp))
-                    Button(onClick = onSaveEdit) {
+                    Button(onClick = {
+                        val newCat = if (editCategory != entry.category) editCategory else null
+                        onSaveEdit(newCat)
+                    }) {
                         Text("Save")
                     }
                 }

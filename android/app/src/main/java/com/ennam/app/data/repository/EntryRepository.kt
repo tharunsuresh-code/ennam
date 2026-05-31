@@ -43,4 +43,8 @@ class EntryRepository(private val entryDao: EntryDao) {
         entryDao.getEntriesWithoutEmbedding()
 
     suspend fun updateRawText(id: String, rawText: String) = entryDao.updateRawText(id, rawText)
+
+    suspend fun updateCategory(id: String, category: String) = entryDao.updateCategory(id, category)
+
+    suspend fun getDistinctCategories(): List<String> = entryDao.getDistinctCategories()
 }

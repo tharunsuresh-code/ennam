@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -50,6 +51,11 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             repository.getByCategory(category)
         }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Dynamic categories derived from all active entries */
+    val dynamicCategories: StateFlow<List<String>> = repository.getAllActive().map { allEntries ->
+        allEntries.map { it.category }.distinct().sorted()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
@@ -234,12 +240,21 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) { repository.setAnswer(id, answer) }
     }
 
-    fun updateEntryText(id: String, newText: String) {
+    fun updateEntryText(id: String, newText: String, newCategory: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.updateRawText(id, newText)
+            if (newCategory != null) {
+                repository.updateCategory(id, newCategory)
+            }
             // Recompute embedding for updated text
             val entry = repository.getById(id) ?: return@launch
             computeAndStoreEmbedding(id, newText + " " + entry.summary)
+        }
+    }
+
+    fun updateEntryCategory(id: String, newCategory: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateCategory(id, newCategory)
         }
     }
 
