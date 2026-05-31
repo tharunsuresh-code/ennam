@@ -4,6 +4,7 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -26,11 +27,18 @@ class Embedder private constructor(private val context: Context) {
     private val modelFile: File get() = File(modelDir, "model.onnx")
     private val vocabFile: File get() = File(modelDir, "vocab.txt")
 
+    @Volatile
     private var ortEnv: OrtEnvironment? = null
+    @Volatile
     private var ortSession: OrtSession? = null
+    @Volatile
     private var vocab: Map<String, Int>? = null
 
-    val isModelReady: Boolean get() = ortSession != null
+    /** True after load() completes successfully. Prevents double-load races. */
+    @Volatile
+    private var _loaded: Boolean = false
+
+    val isModelReady: Boolean get() = _loaded
 
     /** Download model + vocab from Hugging Face */
     suspend fun downloadIfNeeded(
@@ -58,27 +66,41 @@ class Embedder private constructor(private val context: Context) {
         }
     }
 
-    /** Load the ONNX model + vocab into memory */
+    /** Load the ONNX model + vocab into memory. Thread-safe: only loads once. */
     suspend fun load(): Boolean = withContext(Dispatchers.IO) {
+        if (_loaded) {
+            Log.d("Embedder", "load() skipped — already loaded")
+            return@withContext true
+        }
         try {
-            if (!modelFile.exists() || !vocabFile.exists()) return@withContext false
+            if (!modelFile.exists() || !vocabFile.exists()) {
+                Log.w("Embedder", "Model files not found: model=${modelFile.exists()}, vocab=${vocabFile.exists()}")
+                return@withContext false
+            }
 
+            Log.d("Embedder", "Loading vocab from ${vocabFile.absolutePath}")
+            val startMs = System.currentTimeMillis()
             val vocabMap = mutableMapOf<String, Int>()
             vocabFile.readLines().forEachIndexed { idx, token ->
                 vocabMap[token.trim()] = idx
             }
             vocab = vocabMap
+            Log.d("Embedder", "Vocab loaded: ${vocabMap.size} tokens in ${System.currentTimeMillis() - startMs}ms")
 
             val env = OrtEnvironment.getEnvironment()
+            Log.d("Embedder", "Loading ONNX model from ${modelFile.absolutePath}")
+            val sessionStartMs = System.currentTimeMillis()
             val session = env.createSession(
                 modelFile.absolutePath,
                 OrtSession.SessionOptions()
             )
+            Log.d("Embedder", "ONNX model loaded in ${System.currentTimeMillis() - sessionStartMs}ms")
             ortEnv = env
             ortSession = session
+            _loaded = true
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("Embedder", "Failed to load embedding model", e)
             false
         }
     }
@@ -87,13 +109,19 @@ class Embedder private constructor(private val context: Context) {
 
     /** Generate a 384-dim embedding for text. Returns null if model not loaded. */
     suspend fun embed(text: String): FloatArray? = withContext(Dispatchers.IO) {
-        val env = ortEnv ?: return@withContext null
-        val session = ortSession ?: return@withContext null
-        val vcb = vocab ?: return@withContext null
+        Log.d("Embedder", "embed() called: ortEnv=${ortEnv != null}, ortSession=${ortSession != null}, vocab=${vocab != null}, _loaded=$_loaded")
+        if (ortEnv == null || ortSession == null || vocab == null) {
+            Log.w("Embedder", "embed() bailed early — missing: ortEnv=${ortEnv != null}, ortSession=${ortSession != null}, vocab=${vocab != null}")
+            return@withContext null
+        }
+        val env = ortEnv!!
+        val session = ortSession!!
+        val vcb = vocab!!
 
         try {
             val maxLen = 256
             val tokens = tokenize(text, vcb, maxLen)
+            Log.d("Embedder", "Tokenized \"${text.take(40)}\" → ${tokens.size} tokens: ${tokens.take(10)}...")
 
             val inputIdsBuf = LongBuffer.allocate(maxLen)
             val attentionMaskBuf = LongBuffer.allocate(maxLen)
@@ -121,9 +149,36 @@ class Embedder private constructor(private val context: Context) {
             )
 
             val results = session.run(inputs)
+                        Log.d("Embedder", "ONNX run returned ${results.size()} output(s)")
+                        if (results.size() == 0) {
+                            Log.e("Embedder", "ONNX run returned no outputs")
+                            return@withContext null
+                        }
 
-            val outputTensor = (results.get("last_hidden_state") ?: results.get(0)) as? OnnxTensor
-                ?: return@withContext null
+                        // Try common output names for sentence-transformers ONNX models
+                        val outputTensor: OnnxTensor? = try {
+                            results.get("sentence_embedding") as? OnnxTensor
+                        } catch (_: Exception) { null }
+                            ?: try { results.get("last_hidden_state") as? OnnxTensor
+                        } catch (_: Exception) { null }
+                            ?: try { results.get("output_0") as? OnnxTensor
+                        } catch (_: Exception) { null }
+                            ?: try { results.get("dense") as? OnnxTensor
+                        } catch (_: Exception) { null }
+                            ?: try { results.get(0) as? OnnxTensor
+                        } catch (_: Exception) { null }
+
+                        if (outputTensor == null) {
+                            Log.e("Embedder", "No usable output tensor. Try dump below for debugging:")
+                            // Try to enumerate outputs by index
+                            for (i in 0 until results.size()) {
+                                try {
+                                    val t = results.get(i)
+                                    Log.d("Embedder", "  Output[$i]: ${t?.javaClass?.simpleName} ${t?.let { (it as? OnnxTensor)?.info }}")
+                                } catch (_: Exception) {}
+                            }
+                            return@withContext null
+                        }
 
             val outputBuffer = outputTensor.floatBuffer
             outputBuffer.rewind()
@@ -146,9 +201,10 @@ class Embedder private constructor(private val context: Context) {
             }
 
             results.close()
+            Log.d("Embedder", "Embedding computed: ${embedding.take(5).joinToString()}... (norm=$norm)")
             embedding
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("Embedder", "Failed to compute embedding for text: ${text.take(50)}", e)
             null
         }
     }
@@ -181,6 +237,7 @@ class Embedder private constructor(private val context: Context) {
         ortEnv = null
         ortSession = null
         vocab = null
+        _loaded = false
     }
 
     // ── BERT Tokenizer ──

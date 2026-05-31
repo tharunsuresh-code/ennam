@@ -54,6 +54,10 @@ Test device: Pixel 7 (Tensor G2)
     - Classifier prompt updated to allow suggesting new categories beyond the 7 predefined types
     - New categories automatically appear in tabs and in both InputSheet and edit bottom sheet pickers
     - `updateCategory`, `getDistinctCategories` Room queries + `updateEntryCategory` in ViewModel
+    - Model lifecycle: unload on background (ON_STOP), reload on foreground (ON_START) via ProcessLifecycleOwner
+    - Added `lifecycle-process` dependency for app-level foreground/background detection
+    - `Embedder.unload()` fixed to reset `_loaded` flag so reload works after unload
+    - `FeedViewModel.unloadAll()` unloads both LLM and embedder models
 - **Phase 3**
 - Phase 4 — Cross-platform (Flutter + iOS)
 

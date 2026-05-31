@@ -1,6 +1,7 @@
 package com.ennam.app.ui.search
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ennam.app.data.db.AppDatabase
@@ -86,8 +87,10 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
         // 2. Semantic search as enhancement (if model is ready)
         val mergedResults = if (embedder.isModelReady) {
+            Log.d("SearchVM", "Model ready, attempting semantic search")
             try {
                 val queryEmbedding = embedder.embed(query)
+                Log.d("SearchVM", "Query embedding: ${queryEmbedding != null}")
                 if (queryEmbedding != null) {
                     // Fetch all active entries with embeddings
                     val allEntries = mutableListOf<Entry>()
@@ -106,8 +109,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                 embedder.cosineSimilarity(queryEmbedding, entryVec)
                             } ?: 0.0f
 
-                            // Combined score: keyword match wins, semantic adds
-                            val combined = keywordBonus + semanticScore * 0.5f
+                            // Combined score: keyword bonus + semantic directly (no halving)
+                            val combined = keywordBonus + semanticScore
                             if (combined > 0.2f) entry to combined else null
                         }
                             .sortedByDescending { it.second }

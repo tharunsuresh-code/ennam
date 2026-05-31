@@ -258,9 +258,15 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    override fun onCleared() {
-        super.onCleared()
+    /** Unload both LLM and embedder models from memory */
+    fun unloadAll() {
         engine.unload()
         embedder.unload()
+        _slmReady.value = false
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        unloadAll()
     }
 }

@@ -5,6 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ennam.app.ui.feed.FeedScreen
 import com.ennam.app.ui.feed.FeedViewModel
@@ -25,7 +28,7 @@ class MainActivity : ComponentActivity() {
                 var modelState by remember { mutableStateOf(ModelState.Downloading) }
                 var downloadProgress by remember { mutableFloatStateOf(0f) }
 
-                // Startup: download SLM model → load → ready
+                // ── Initial boot: download + load ──
                 LaunchedEffect(Unit) {
                     if (!feedViewModel.isModelDownloaded()) {
                         modelState = ModelState.Downloading
@@ -67,6 +70,43 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         searchViewModel.loadModel()
+                    }
+                }
+
+                // ── Foreground/background: unload on exit, reload on enter ──
+                var wasReady by remember { mutableStateOf(false) }
+
+                DisposableEffect(ProcessLifecycleOwner.get()) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        when (event) {
+                            Lifecycle.Event.ON_STOP -> {
+                                // App going to background — free memory
+                                wasReady = modelState == ModelState.Ready
+                                feedViewModel.unloadAll()
+                            }
+                            Lifecycle.Event.ON_START -> {
+                                // App coming to foreground — reload if needed
+                                if (wasReady && !feedViewModel.isModelDownloaded()) {
+                                    return@LifecycleEventObserver
+                                }
+                                if (wasReady) {
+                                    modelState = ModelState.Loading
+                                    scope.launch {
+                                        feedViewModel.loadModel { modelState = ModelState.Ready }
+                                    }
+                                    // Reload embedding models too
+                                    feedViewModel.loadEmbeddingModel()
+                                    if (searchViewModel.isModelDownloaded()) {
+                                        searchViewModel.loadModel()
+                                    }
+                                }
+                            }
+                            else -> {}
+                        }
+                    }
+                    ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
+                    onDispose {
+                        ProcessLifecycleOwner.get().lifecycle.removeObserver(observer)
                     }
                 }
 
