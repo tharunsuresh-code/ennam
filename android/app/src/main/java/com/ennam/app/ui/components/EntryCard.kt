@@ -29,6 +29,12 @@ import androidx.compose.ui.unit.sp
 import com.ennam.app.data.model.Entry
 import com.ennam.app.data.model.PendingEntry
 
+private val categoryEmojis = mapOf(
+    "todo" to "\u2705", "idea" to "\uD83D\uDCA1", "receipt" to "\uD83E\uDDFE",
+    "journal" to "\uD83D\uDCDD", "bookmark" to "\uD83D\uDCD6",
+    "question" to "\u2753", "screenshot" to "\uD83D\uDCF8"
+)
+
 // ──────────────────────────────────────────────
 // Category-specific card layouts
 // ──────────────────────────────────────────────
@@ -62,19 +68,43 @@ fun EntryCard(
     }
 }
 
+/** Show rawText as primary, summary as gray subtitle if different */
+@Composable
+private fun EntryBody(entry: Entry, maxLines: Int = 3) {
+    val raw = entry.rawText
+    val summ = entry.summary
+
+    Text(
+        text = raw,
+        fontWeight = FontWeight.Medium,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis
+    )
+    if (summ.isNotBlank() && summ != raw) {
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = summ,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 // ────────── TODO ──────────
 
 @Composable
 private fun TodoCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
     val priorityColor = when (entry.priority) {
-        "high" -> Color(0xFFE53935)       // 🔴
-        "low" -> Color(0xFF43A047)         // 🟢
-        else -> Color(0xFFFDD835)          // 🟡 — medium
+        "high" -> Color(0xFFE53935)
+        "low" -> Color(0xFF43A047)
+        else -> Color(0xFFFDD835)
     }
     val priorityLabel = when (entry.priority) {
-        "high" -> "🔴 High"
-        "low" -> "🟢 Low"
-        else -> "🟡 Medium"
+        "high" -> "\uD83D\uDD34 High"
+        "low" -> "\uD83D\uDFE2 Low"
+        else -> "\uD83D\uDFE1 Medium"
     }
     val bgColor = if (entry.isDone)
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -88,12 +118,9 @@ private fun TodoCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier)
         colors = CardDefaults.cardColors(containerColor = bgColor)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Checkbox
             Checkbox(
                 checked = entry.isDone,
                 onCheckedChange = { callbacks.onToggleDone(entry.id) }
@@ -102,7 +129,7 @@ private fun TodoCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier)
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = entry.summary,
+                    text = entry.rawText,
                     fontWeight = if (entry.isDone) FontWeight.Normal else FontWeight.Medium,
                     textDecoration = if (entry.isDone) TextDecoration.LineThrough else TextDecoration.None,
                     color = if (entry.isDone)
@@ -148,23 +175,17 @@ private fun IdeaCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier)
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .combinedClickable(
-                onClick = { expanded = !expanded }
-            ),
+            .combinedClickable(onClick = { expanded = !expanded }),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("💡", fontSize = 18.sp)
+                Text("\uD83D\uDCA1", fontSize = 18.sp)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = entry.summary,
+                    text = entry.rawText,
                     fontWeight = FontWeight.Medium,
                     maxLines = if (expanded) Int.MAX_VALUE else 3,
                     overflow = TextOverflow.Ellipsis,
@@ -172,32 +193,36 @@ private fun IdeaCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier)
                 )
             }
 
+            // Always show full raw text + summary on expansion
             AnimatedVisibility(
                 visible = expanded,
                 enter = expandVertically(),
                 exit = shrinkVertically()
             ) {
                 Column {
-                    if (entry.tags.isNotBlank() && entry.tags != "[]") {
+                    // Show summary as a subtitle if it differs
+                    if (entry.summary.isNotBlank() && entry.summary != entry.rawText) {
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "🏷️ " + entry.tags
-                                .removeSurrounding("[", "]")
-                                .replace("\"", "")
-                                .replace(",", " · "),
+                            text = entry.summary.take(300),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    if (entry.rawText != entry.summary) {
-                        Text(
-                            text = "Note: ${entry.rawText}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                             maxLines = 5,
                             overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // Show tags
+                    if (entry.tags.isNotBlank() && entry.tags != "[]") {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "\uD83C\uDFF7\uFE0F " + entry.tags
+                                .removeSurrounding("[", "]")
+                                .replace("\"", "")
+                                .replace(",", " \u00B7 "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -231,14 +256,9 @@ private val storeKeywords = listOf("at ", "from ", "store:", "shop:", "@")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ReceiptCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
-    val context = LocalContext.current
-
-    // Extract amount
     val amount = remember(entry.rawText) {
         amountRegex.find(entry.rawText)?.groupValues?.get(0) ?: ""
     }
-
-    // Extract store name
     val storeName = remember(entry.rawText) {
         val lower = entry.rawText.lowercase()
         storeKeywords.firstNotNullOfOrNull { kw ->
@@ -247,7 +267,7 @@ private fun ReceiptCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
                 entry.rawText.substring(idx + kw.length).trim()
                     .split(Regex("""[,.\n]""")).firstOrNull()?.trim()
             } else null
-        } ?: entry.summary.take(30)
+        } ?: entry.rawText.take(40)
     }
 
     val showMenu = remember { mutableStateOf(false) }
@@ -256,20 +276,12 @@ private fun ReceiptCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .combinedClickable(
-                onClick = {},
-                onLongClick = { showMenu.value = true }
-            ),
+            .combinedClickable(onClick = {}, onLongClick = { showMenu.value = true }),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
-        ) {
-            // Amount + store
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             if (amount.isNotBlank()) {
                 Text(
                     text = amount,
@@ -282,16 +294,27 @@ private fun ReceiptCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
             Text(
                 text = storeName,
                 style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            // Show summary as a note if different from raw
+            if (entry.summary.isNotBlank() && entry.summary != entry.rawText) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = entry.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "🧾 Receipt",
+                    text = "\uD83E\uDDFE Receipt",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -304,42 +327,35 @@ private fun ReceiptCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
         }
     }
 
-    // Long-press menu
     DropdownMenu(
         expanded = showMenu.value,
         onDismissRequest = { showMenu.value = false }
     ) {
         DropdownMenuItem(
             text = { Text("Archive") },
-            onClick = {
-                showMenu.value = false
-                callbacks.onArchive(entry.id)
-            }
+            onClick = { showMenu.value = false; callbacks.onArchive(entry.id) }
         )
         DropdownMenuItem(
             text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-            onClick = {
-                showMenu.value = false
-                callbacks.onDelete(entry.id)
-            }
+            onClick = { showMenu.value = false; callbacks.onDelete(entry.id) }
         )
     }
 }
 
 // ────────── JOURNAL ──────────
 
-private val moodRegex = Regex("""[:;][)D(]|😀|😁|😂|😊|😍|😢|😭|😡|🤔|😎|🥰|🤩|😤|😠|🤬|😱|😰|😥|😴|🤯|🥳|🙂|😐|😏|😒|😳|🥺|🤗|😌|😔|😪|🤤|😷|🤒|🤕|🤢|🤮|🤧|🥶|🥵|🥴|😵|🤠|🤓|🧐|😕|😟|🙁|😮|😯|😲|😶|😑|😬|😥|😓|🤭|🤫|🤥|😗|😙|😚|😘|😋|😉|😅|😆|😃|😄|😣|😖|😫|😩|😨|😧|😦|😮‍💨|😵‍💫|🥸""")
+// mood detection via Regex in the card function — no set needed here
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun JournalCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
     val moodEmoji = remember(entry.rawText) {
-        moodRegex.find(entry.rawText)?.value ?: "📝"
+        val m = Regex("""[:;][)D(]|😀|😁|😂|😊|😍|😢|😭|😡|🤔|😎|🥰|🤩""").find(entry.rawText)
+        m?.value ?: "\uD83D\uDCDD"
     }
     val firstLines = remember(entry.rawText) {
         entry.rawText.lines().take(3).joinToString("\n")
     }
-
     val locked by remember { mutableStateOf(entry.isLocked) }
 
     Card(
@@ -347,23 +363,19 @@ private fun JournalCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .combinedClickable(
-                onClick = { /* unlocked, just view */ },
+                onClick = {},
                 onLongClick = { callbacks.onToggleLocked(entry.id) }
             ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(moodEmoji, fontSize = 24.sp)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = if (locked) "🔒 Locked entry" else formatTimestamp(entry.createdAt),
+                    text = if (locked) "\uD83D\uDD12 Locked entry" else formatTimestamp(entry.createdAt),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -374,12 +386,10 @@ private fun JournalCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
             Spacer(Modifier.height(8.dp))
-
             if (locked) {
                 Text(
-                    text = "Tap and authenticate to view",
+                    "Tap and authenticate to view",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
@@ -391,10 +401,9 @@ private fun JournalCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
                     overflow = TextOverflow.Ellipsis
                 )
             }
-
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "📝 Journal · long-press to ${if (locked) "unlock" else "lock"}",
+                text = "\uD83D\uDCDD Journal \u00B7 long-press to ${if (locked) "unlock" else "lock"}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -410,42 +419,42 @@ private val urlRegex = Regex("""https?://[^\s,;!?)]+""")
 @Composable
 private fun BookmarkCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifier) {
     val context = LocalContext.current
-
-    val url = remember(entry.rawText) {
-        urlRegex.find(entry.rawText)?.value ?: ""
-    }
+    val url = remember(entry.rawText) { urlRegex.find(entry.rawText)?.value ?: "" }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .combinedClickable(
-                onClick = {
-                    if (url.isNotBlank()) {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        context.startActivity(intent)
-                    }
+            .combinedClickable(onClick = {
+                if (url.isNotBlank()) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 }
-            ),
+            }),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🔖", fontSize = 18.sp)
+                Text("\uD83D\uDCD6", fontSize = 18.sp)
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = entry.summary,
+                        text = entry.rawText,
                         fontWeight = FontWeight.Medium,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (entry.summary.isNotBlank() && entry.summary != entry.rawText) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = entry.summary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     if (url.isNotBlank()) {
                         Spacer(Modifier.height(2.dp))
                         Text(
@@ -458,7 +467,6 @@ private fun BookmarkCard(entry: Entry, callbacks: CardCallbacks, modifier: Modif
                     }
                 }
             }
-
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -497,28 +505,33 @@ private fun QuestionCard(entry: Entry, callbacks: CardCallbacks, modifier: Modif
                 MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                Text(if (resolved) "✅" else "❓", fontSize = 18.sp)
+                Text(if (resolved) "\u2705" else "\u2753", fontSize = 18.sp)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = entry.summary,
+                    text = entry.rawText,
                     fontWeight = FontWeight.Medium,
                     maxLines = if (resolved) 2 else Int.MAX_VALUE,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
             }
-
+            // Show summary if it differs
+            if (entry.summary.isNotBlank() && entry.summary != entry.rawText && !resolved) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = entry.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Spacer(Modifier.height(8.dp))
-
             if (resolved) {
                 Text(
-                    text = "💬 $answerText",
+                    text = "\uD83D\uDCAC $answerText",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontStyle = FontStyle.Italic
@@ -553,9 +566,7 @@ private fun ScreenshotCard(entry: Entry, callbacks: CardCallbacks, modifier: Mod
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .combinedClickable(
-                onClick = { callbacks.onTogglePin(entry.id) }
-            ),
+            .combinedClickable(onClick = { callbacks.onTogglePin(entry.id) }),
         colors = CardDefaults.cardColors(
             containerColor = if (entry.isPinned)
                 MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
@@ -563,26 +574,16 @@ private fun ScreenshotCard(entry: Entry, callbacks: CardCallbacks, modifier: Mod
                 MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("📸", fontSize = 18.sp)
+                Text("\uD83D\uDCF8", fontSize = 18.sp)
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "Screenshot",
-                    fontWeight = FontWeight.Medium,
-                    style = MaterialTheme.typography.titleSmall
-                )
+                Text("Screenshot", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.titleSmall)
                 if (entry.isPinned) {
                     Spacer(Modifier.width(4.dp))
                     Icon(
-                        Icons.Default.PushPin,
-                        contentDescription = "Pinned",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        Icons.Default.PushPin, contentDescription = "Pinned",
+                        modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary
                     )
                 }
                 Spacer(Modifier.weight(1f))
@@ -592,25 +593,19 @@ private fun ScreenshotCard(entry: Entry, callbacks: CardCallbacks, modifier: Mod
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
             Spacer(Modifier.height(8.dp))
-
-            // Thumbnail placeholder
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(80.dp),
+                modifier = Modifier.fillMaxWidth().height(80.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
-                        text = "🖼️ Image preview",
+                        "\uD83D\uDDBC\uFE0F Image preview",
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
                 }
             }
-
             if (entry.rawText.isNotBlank() && entry.rawText != "[Image captured - OCR pending]") {
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -621,10 +616,9 @@ private fun ScreenshotCard(entry: Entry, callbacks: CardCallbacks, modifier: Mod
                     overflow = TextOverflow.Ellipsis
                 )
             }
-
             Spacer(Modifier.height(2.dp))
             Text(
-                text = if (entry.isPinned) "📌 Pinned · tap to unpin" else "Tap to pin to top",
+                text = if (entry.isPinned) "\uD83D\uDCCC Pinned \u00B7 tap to unpin" else "Tap to pin to top",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -644,37 +638,44 @@ private fun GenericCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Text("📌", fontSize = 20.sp)
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = entry.summary,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(2.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Text("\uD83D\uDCCC", fontSize = 20.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = entry.category,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        text = entry.rawText,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = entry.category,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (entry.summary.isNotBlank() && entry.summary != entry.rawText) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = entry.summary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
+            }
+            Spacer(Modifier.height(2.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = entry.category,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = formatTimestamp(entry.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -685,27 +686,17 @@ private fun GenericCard(entry: Entry, callbacks: CardCallbacks, modifier: Modifi
 @Composable
 fun PendingEntryCard(pending: PendingEntry, modifier: Modifier = Modifier) {
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .height(16.dp),
+                modifier = Modifier.fillMaxWidth(0.7f).height(16.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.small
             ) {}
             Spacer(Modifier.height(8.dp))
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth(0.4f)
-                    .height(12.dp),
+                modifier = Modifier.fillMaxWidth(0.4f).height(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.small
             ) {}
@@ -734,7 +725,5 @@ private fun formatTimestamp(ms: Long): String {
 
 private fun formatDate(ms: Long): String {
     val cal = java.util.Calendar.getInstance().apply { timeInMillis = ms }
-    val month = cal.get(java.util.Calendar.MONTH) + 1
-    val day = cal.get(java.util.Calendar.DAY_OF_MONTH)
-    return "$month/$day"
+    return "${cal.get(java.util.Calendar.MONTH) + 1}/${cal.get(java.util.Calendar.DAY_OF_MONTH)}"
 }
